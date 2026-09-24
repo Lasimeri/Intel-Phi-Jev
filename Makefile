@@ -5,7 +5,7 @@
 XKS := target/release/xks
 AVX512_ENV := LLAMA_BUILD_DIR=$(HOME)/llama.cpp/build-avx512/bin CARGO_TARGET_DIR=target/avx512
 
-.PHONY: help build build-x86 build-avx512 serve stop query subprojects subproject test fmt clippy docs-check check clean
+.PHONY: help build build-x86 build-avx512 serve stop query jev jev-eval subprojects subproject test fmt clippy docs-check check clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-14s %s\n", $$1, $$2}'
@@ -26,6 +26,12 @@ stop: ## Stop the server and release the cards' huge pages
 
 query: build-x86 ## One example query (examples/query.json)
 	$(XKS) query --file examples/query.json
+
+jev: build-x86 ## The same query to the real Jev (TypeSafe hosted; TYPESAFE_API_KEY in xks.local.conf)
+	$(XKS) --backend-kind jev query --file examples/query.json
+
+jev-eval: build-x86 ## Score the long sessions with the real Jev; rows in target/jev-long-rows.jsonl
+	$(XKS) --backend-kind jev eval examples/long_sessions.jsonl --rows target/jev-long-rows.jsonl
 
 subprojects: build ## Run every subproject; records in docs/subprojects/results/
 	$(XKS) subproject run all

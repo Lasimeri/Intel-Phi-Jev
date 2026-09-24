@@ -238,6 +238,62 @@ fn main() {
     }
 }
 
+/// `--backend-kind jev`: the real Jev, through TypeSafe's API. Needs
+/// `TYPESAFE_API_KEY` (the environment, or `xks.local.conf`).
+fn jev(cmd: &Cmd) -> Result<(), String> {
+    let ts = TypeSafe::from_env().ok_or(
+        "the real Jev needs TYPESAFE_API_KEY: create a key at console.typesafe.ai and put \
+         TYPESAFE_API_KEY=... in xks.local.conf (not tracked) or the environment",
+    )?;
+    match cmd {
+        Cmd::Query {
+            file,
+            state,
+            noul,
+            choice,
+            score,
+            ..
+        } => {
+            let req = build_request(
+                file.clone(),
+                state.clone(),
+                noul.clone(),
+                choice.clone(),
+                score.clone(),
+            )?;
+            let (ev, ms) = ts.evaluate(&req).map_err(|e| e.to_string())?;
+            println!("{}", serde_json::to_string_pretty(&ev).unwrap());
+            eprintln!("jev ({}): {ms:.1} ms end-to-end", ev.model);
+            Ok(())
+        }
+        Cmd::Eval { file, rows, limit } => {
+            let mut cases = eval::load_cases(file)?;
+            if let Some(n) = limit {
+                cases.truncate(*n);
+            }
+            let t0 = Instant::now();
+            let (r, failed) = eval::run_jev(&ts, &cases).map_err(|e| e.to_string())?;
+            let wall = t0.elapsed().as_secs_f64();
+            let m = eval::metrics(&r, failed, &Calibration::default());
+            let mut v = serde_json::to_value(&m).unwrap();
+            v["subject"] = json!(format!("typesafe/{}", ts.model));
+            v["site"] = json!("typesafe (hosted)");
+            v["cases"] = json!(cases.len());
+            v["wall_s"] = json!((wall * 100.0).round() / 100.0);
+            println!("{}", serde_json::to_string_pretty(&v).unwrap());
+            if let Some(p) = rows {
+                let text: String = r
+                    .iter()
+                    .map(|x| serde_json::to_string(x).unwrap() + "\n")
+                    .collect();
+                std::fs::write(p, text).map_err(|e| e.to_string())?;
+            }
+            Ok(())
+        }
+        _ => Err("--backend-kind jev runs query and eval (the hosted Jev serves itself)".into()),
+    }
+}
+
 /// Where a detached server keeps its pid file and log.
 fn run_dir() -> PathBuf {
     std::env::var_os("XDG_RUNTIME_DIR")
@@ -451,6 +507,12 @@ fn run() -> Result<(), String> {
         }
         println!("{}", serde_json::to_string_pretty(&report.summary).unwrap());
         return Ok(());
+    }
+    // The real Jev: TypeSafe's hosted model. It returns typed answers, not
+    // label log-probabilities, so it is not a Scorer; query and eval talk to
+    // it directly.
+    if matches!(cli.backend_kind.as_str(), "jev" | "typesafe") {
+        return jev(&cli.cmd);
     }
     let mut site_name = "remote";
     let (scorer, template): (Box<dyn Scorer>, Template) = match cli.backend_kind.as_str() {

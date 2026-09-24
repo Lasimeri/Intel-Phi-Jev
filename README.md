@@ -1,5 +1,10 @@
 # Intel Phi Jev: `xks`
 
+**The real Jev** is TypeSafe's hosted model: it runs only on their servers
+(no weights exist outside them), and `xks --backend-kind jev` (`make jev`)
+calls it with your `TYPESAFE_API_KEY` from console.typesafe.ai, set in
+`xks.local.conf`. Everything else here is a local imitation of its interface.
+
 A local implementation of TypeSafe's Jev contract, the first "System One"
 model: send a **state** and typed **questions** (Noul, Choice, Score), get back
 typed answers with probability distributions and confidence, never

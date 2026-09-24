@@ -70,17 +70,7 @@ pub fn run<S: Scorer>(judge: &Judge<S>, cases: &[Case]) -> Result<(Vec<Row>, usi
         };
         for r in raws {
             let Some(g) = c.gold.get(&r.id) else { continue };
-            let gold = match g {
-                Value::Number(n) => n.as_u64().map(|x| x as usize),
-                Value::String(s) => r
-                    .keys
-                    .iter()
-                    .position(|k| k == s)
-                    .or_else(|| s.parse().ok()),
-                Value::Bool(b) => Some(if *b { 0 } else { 1 }),
-                _ => None,
-            };
-            let Some(gold) = gold else {
+            let Some(gold) = gold_index(g, &r.keys) else {
                 return Err(BackendError::Rejected(format!(
                     "case {ci} question `{}`: gold {g} is not an option",
                     r.id
@@ -96,6 +86,96 @@ pub fn run<S: Scorer>(judge: &Judge<S>, cases: &[Case]) -> Result<(Vec<Row>, usi
                 latency_ms: r.latency_ms,
                 prompt_evaluated: r.prompt_evaluated,
                 prompt_cached: r.prompt_cached,
+            });
+        }
+    }
+    Ok((rows, failed))
+}
+
+/// A gold label as an option index: a key, a level number, a bool.
+fn gold_index(g: &Value, keys: &[String]) -> Option<usize> {
+    match g {
+        Value::Number(n) => n.as_u64().map(|x| x as usize),
+        Value::String(s) => keys.iter().position(|k| k == s).or_else(|| s.parse().ok()),
+        Value::Bool(b) => Some(if *b { 0 } else { 1 }),
+        _ => None,
+    }
+}
+
+/// The same cases asked of the real Jev (TypeSafe's hosted API). Its
+/// answers carry probabilities, not log-probabilities: each becomes a row
+/// with `ln p` per option in the question's own order (Noul as yes, no),
+/// so `metrics`, `replay` and `corroborate` read Jev's run exactly as they
+/// read a local one.
+pub fn run_jev(
+    ts: &crate::backend::typesafe::TypeSafe,
+    cases: &[Case],
+) -> Result<(Vec<Row>, usize), BackendError> {
+    use crate::protocol::{parse_questions, Question};
+    let lnp = |p: f64| p.max(1e-12).ln();
+    let prob = |m: Option<&Value>, k: &str| -> f64 {
+        m.and_then(|m| m.get(k))
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0)
+    };
+    let mut rows = Vec::new();
+    let mut failed = 0usize;
+    for (ci, c) in cases.iter().enumerate() {
+        let req = Request {
+            model: c.model.clone(),
+            state: c.state.clone(),
+            questions: c.questions.clone(),
+        };
+        let (ev, ms) = match ts.evaluate(&req) {
+            Ok(r) => r,
+            Err(BackendError::Rejected(m)) => return Err(BackendError::Rejected(m)),
+            Err(e) => {
+                eprintln!("case {ci}: {e} (counted as failed)");
+                failed += 1;
+                continue;
+            }
+        };
+        let questions = parse_questions(&c.questions).map_err(BackendError::Rejected)?;
+        let each = ms / questions.len().max(1) as f64;
+        for (qi, (id, q)) in questions.iter().enumerate() {
+            let Some(a) = ev.answers.get(id) else {
+                return Err(BackendError::Malformed(format!(
+                    "Jev did not answer `{id}`"
+                )));
+            };
+            let probs = a.get("probabilities");
+            let (kind, keys, ps): (&str, Vec<String>, Vec<f64>) = match q {
+                Question::Noul { .. } => {
+                    let p = a.get("noul").and_then(Value::as_f64).unwrap_or(0.5);
+                    ("noul", vec!["yes".into(), "no".into()], vec![p, 1.0 - p])
+                }
+                Question::Choice { criteria, .. } => {
+                    let keys: Vec<String> = criteria.keys().cloned().collect();
+                    let ps = keys.iter().map(|k| prob(probs, k)).collect();
+                    ("choice", keys, ps)
+                }
+                Question::Score { criteria, .. } => {
+                    let keys: Vec<String> = (0..criteria.len()).map(|i| i.to_string()).collect();
+                    let ps = keys.iter().map(|k| prob(probs, k)).collect();
+                    ("score", keys, ps)
+                }
+            };
+            let Some(g) = c.gold.get(id) else { continue };
+            let Some(gold) = gold_index(g, &keys) else {
+                return Err(BackendError::Rejected(format!(
+                    "case {ci} question `{id}`: gold {g} is not an option"
+                )));
+            };
+            rows.push(Row {
+                case_index: ci,
+                id: id.clone(),
+                kind: kind.to_string(),
+                n: keys.len(),
+                raw_logprobs: ps.into_iter().map(lnp).collect(),
+                gold,
+                latency_ms: each,
+                prompt_evaluated: if qi == 0 { ev.usage.input_tokens } else { 0 },
+                prompt_cached: 0,
             });
         }
     }
