@@ -1,12 +1,10 @@
 //! The judge: render each question against the shared state prefix, score
 //! the option labels with a [`Scorer`], calibrate, and build typed answers.
 
-use std::time::Instant;
-
 use serde_json::{json, Map, Value};
 
 use crate::backend::{BackendError, Scorer};
-use crate::prompt::{self, Template, MAX_OPTIONS};
+use crate::prompt::{self, Template, LETTERS, MAX_OPTIONS};
 use crate::protocol::{
     parse_questions, render_state, Answer, Evaluation, Question, Request, Usage,
 };
@@ -60,7 +58,16 @@ impl<S: Scorer> Judge<S> {
     pub fn raw(&self, req: &Request) -> Result<Vec<RawQuestion>, BackendError> {
         let questions = parse_questions(&req.questions).map_err(BackendError::Rejected)?;
         let prefix = prompt::prefix(self.cfg.template, &render_state(&req.state));
-        let mut out = Vec::with_capacity(questions.len());
+        // Render every fingerprint (each question, each rotation) first, so
+        // the backend sees the whole session at once and can fork it.
+        struct Plan {
+            id: String,
+            kind: &'static str,
+            keys: Vec<String>,
+            orders: Vec<Vec<usize>>,
+        }
+        let mut plans = Vec::with_capacity(questions.len());
+        let mut items: Vec<(String, Vec<String>)> = Vec::new();
         for (id, q) in &questions {
             let (kind, n) = match q {
                 Question::Noul { .. } => ("noul", 2),
@@ -69,7 +76,12 @@ impl<S: Scorer> Judge<S> {
             };
             if n > MAX_OPTIONS {
                 return Err(BackendError::Rejected(format!(
-                    "question `{id}`: {n} options; jev-rs currently supports at most {MAX_OPTIONS}"
+                    "question `{id}`: {n} options; a Choice takes at most {MAX_OPTIONS}"
+                )));
+            }
+            if n > LETTERS && !self.scorer.multi_token_labels() {
+                return Err(BackendError::Rejected(format!(
+                    "question `{id}`: {n} options needs --backend-kind artichoke (this backend reads one-token labels, at most {LETTERS})"
                 )));
             }
             let perms = if kind == "choice" {
@@ -77,35 +89,55 @@ impl<S: Scorer> Judge<S> {
             } else {
                 1
             };
-            let mut mean = vec![0.0f64; n];
-            let mut evaluated = 0;
-            let mut cached = 0;
-            let t0 = Instant::now();
-            let mut keys = Vec::new();
+            let mut plan = Plan {
+                id: id.clone(),
+                kind,
+                keys: Vec::new(),
+                orders: Vec::with_capacity(perms),
+            };
             for r in 0..perms {
                 let order: Vec<usize> = (0..n).map(|i| (i + r) % n).collect();
                 let rendered = prompt::render(self.cfg.template, &prefix, q, Some(&order));
                 if r == 0 {
                     // rotation 0 is the identity: keys are in request order.
-                    keys = rendered.keys.clone();
+                    plan.keys = rendered.keys.clone();
                 }
-                let scored = self.scorer.score(&rendered.prompt(), &rendered.labels)?;
-                let p = softmax(&scored.logprobs, 1.0);
+                items.push((rendered.suffix, rendered.labels));
+                plan.orders.push(order);
+            }
+            plans.push(plan);
+        }
+        let scored = self.scorer.score_many(&prefix, &items)?;
+        let mut scored = scored.into_iter();
+        let mut out = Vec::with_capacity(plans.len());
+        for plan in plans {
+            let n = plan.keys.len();
+            let perms = plan.orders.len();
+            let mut mean = vec![0.0f64; n];
+            let mut evaluated = 0;
+            let mut cached = 0;
+            let mut latency_ms = 0.0;
+            for order in &plan.orders {
+                let s = scored.next().ok_or_else(|| {
+                    BackendError::Malformed("backend returned too few readings".into())
+                })?;
+                let p = softmax(&s.logprobs, 1.0);
                 // rendered position `pos` holds original option `order[pos]`.
                 for (pos, &orig) in order.iter().enumerate() {
                     mean[orig] += p[pos] / perms as f64;
                 }
-                evaluated += scored.cost.prompt_evaluated;
-                cached += scored.cost.prompt_cached;
+                evaluated += s.cost.prompt_evaluated;
+                cached += s.cost.prompt_cached;
+                latency_ms += s.cost.latency_ms;
             }
             out.push(RawQuestion {
-                id: id.clone(),
-                kind,
-                keys,
+                id: plan.id,
+                kind: plan.kind,
+                keys: plan.keys,
                 logprobs: mean.iter().map(|p| p.max(1e-300).ln()).collect(),
                 prompt_evaluated: evaluated,
                 prompt_cached: cached,
-                latency_ms: t0.elapsed().as_secs_f64() * 1e3,
+                latency_ms,
             });
         }
         Ok(out)
@@ -128,7 +160,7 @@ impl<S: Scorer> Judge<S> {
                     Answer::Choice {
                         choice: r.keys[best].clone(),
                         probabilities: prob_map(&r.keys, &probs),
-                        confidence: round(confidence(&probs)),
+                        confidence: round(confidence("choice", &probs)),
                     }
                 }
                 _ => {
@@ -149,7 +181,7 @@ impl<S: Scorer> Judge<S> {
                         score: round(expected_level(&probs)),
                         legend,
                         probabilities: prob_map(&r.keys, &probs),
-                        confidence: round(confidence(&probs)),
+                        confidence: round(confidence("score", &probs)),
                     }
                 }
             };

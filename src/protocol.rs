@@ -1,7 +1,7 @@
 //! Wire types for the System One request/response, byte-compatible with
 //! TypeSafe's `POST /v1/systemone` so the official SDKs (`typesafe-sdk`,
 //! `@typesafe-ai/sdk`, the `jev` crate) work unchanged with
-//! `TYPESAFE_BASE_URL` pointed at a jev-rs server.
+//! `TYPESAFE_BASE_URL` pointed at an xks server.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -9,7 +9,7 @@ use serde_json::{Map, Value};
 /// A request: the situation (`state`) plus named typed questions.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Request {
-    /// Model alias. Accepted and echoed; jev-rs serves whatever backend it was
+    /// Model alias. Accepted and echoed; xks serves whatever backend it was
     /// started with.
     #[serde(default)]
     pub model: Option<String>,
@@ -83,7 +83,7 @@ pub struct Evaluation {
     pub model: String,
     pub answers: Map<String, Value>,
     pub usage: Usage,
-    /// jev-rs extension: raw per-question diagnostics (logprobs, latency).
+    /// xks extension: raw per-question diagnostics (logprobs, latency).
     /// Absent unless the server was started with `--debug`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub debug: Option<Value>,

@@ -34,7 +34,7 @@ pub fn load_cases(path: &Path) -> Result<Vec<Case>, String> {
 }
 
 /// One scored question with its gold index, kept for fitting/reporting.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Row {
     pub case_index: usize,
     pub id: String,
@@ -137,7 +137,7 @@ pub fn metrics(rows: &[Row], failed_cases: usize, cal: &Calibration) -> Metrics 
         let ok = pred == r.gold;
         correct += ok as usize;
         let pmax = p[pred];
-        conf_sum += confidence(&p);
+        conf_sum += confidence(&r.kind, &p);
         brier += p
             .iter()
             .enumerate()
@@ -150,7 +150,7 @@ pub fn metrics(rows: &[Row], failed_cases: usize, cal: &Calibration) -> Metrics 
         bins[b].0 += 1;
         bins[b].1 += ok as usize;
         bins[b].2 += pmax;
-        gated.push((confidence(&p), ok));
+        gated.push((confidence(&r.kind, &p), ok));
         let e = kind_tot.entry(r.kind.clone()).or_default();
         e.0 += 1;
         e.1 += ok as usize;

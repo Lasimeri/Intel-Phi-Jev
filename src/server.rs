@@ -1,7 +1,11 @@
-//! A tiny synchronous HTTP server exposing `POST /v1/systemone`.
-//! Compatible with the TypeSafe SDKs via `TYPESAFE_BASE_URL`.
+//! A tiny synchronous HTTP server exposing `POST /v1/systemone` (the Jev
+//! wire format, so the TypeSafe SDKs work against it through
+//! `TYPESAFE_BASE_URL`), with an optional kill date: an idle period after
+//! which it exits and gives the cards back. See server.md.
 
-use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 use tiny_http::{Header, Method, Request as HttpRequest, Response, Server};
@@ -14,35 +18,69 @@ pub struct ServerConfig {
     pub bind: String,
     /// Accepted bearer tokens; empty = no auth.
     pub api_keys: Vec<String>,
+    /// Exit after this long with no request in flight or arriving.
+    pub kill_date: Option<Duration>,
 }
 
 pub fn serve<S: Scorer + 'static>(judge: Judge<S>, cfg: ServerConfig) -> Result<(), String> {
     let server = Server::http(&cfg.bind).map_err(|e| format!("bind {}: {e}", cfg.bind))?;
     let judge = Arc::new(judge);
     let keys = Arc::new(cfg.api_keys);
+    let busy = Arc::new(AtomicUsize::new(0));
+    let last = Arc::new(Mutex::new(Instant::now()));
     eprintln!(
-        "jev-rs listening on http://{}  (model {})",
+        "xks listening on http://{}  (subject {}){}",
         cfg.bind,
-        judge.scorer.model_name()
+        judge.scorer.model_name(),
+        match cfg.kill_date {
+            Some(d) => format!(", kill date {} s idle", d.as_secs()),
+            None => String::new(),
+        }
     );
-    for req in server.incoming_requests() {
+    loop {
+        let req = match server.recv_timeout(Duration::from_secs(1)) {
+            Ok(Some(r)) => r,
+            Ok(None) => {
+                if let Some(d) = cfg.kill_date {
+                    let idle = last.lock().expect("last").elapsed();
+                    if busy.load(Ordering::SeqCst) == 0 && idle >= d {
+                        eprintln!(
+                            "xks: kill date reached ({} s idle), exiting",
+                            idle.as_secs()
+                        );
+                        return Ok(());
+                    }
+                }
+                continue;
+            }
+            Err(e) => return Err(format!("accept: {e}")),
+        };
         let judge = judge.clone();
         let keys = keys.clone();
-        std::thread::spawn(move || handle(req, &judge, &keys));
+        let busy = busy.clone();
+        let last = last.clone();
+        busy.fetch_add(1, Ordering::SeqCst);
+        std::thread::spawn(move || {
+            handle(req, &judge, &keys);
+            *last.lock().expect("last") = Instant::now();
+            busy.fetch_sub(1, Ordering::SeqCst);
+        });
     }
-    Ok(())
 }
 
 fn handle<S: Scorer>(mut req: HttpRequest, judge: &Judge<S>, keys: &[String]) {
     let path = req.url().split('?').next().unwrap_or("").to_string();
     let method = req.method().clone();
     let result: (u16, Value) = match (&method, path.as_str()) {
-        (Method::Get, "/health") => (200, json!({"status": "ok"})),
+        (Method::Get, "/health") => (
+            200,
+            json!({"status": "ok", "subject": judge.scorer.model_name()}),
+        ),
         (Method::Get, "/v1/models") => (
             200,
             json!({"object": "list", "data": [
-                {"id": judge.scorer.model_name(), "object": "model", "owned_by": "jev-rs"},
-                {"id": "jev-latest", "object": "model", "owned_by": "jev-rs", "alias_of": judge.scorer.model_name()}
+                {"id": judge.scorer.model_name(), "object": "model", "owned_by": "xks"},
+                {"id": "jev-latest", "object": "model", "owned_by": "xks", "alias_of": judge.scorer.model_name()}
             ]}),
         ),
         (Method::Post, "/v1/systemone") => {

@@ -1,5 +1,5 @@
 //! Minimal MCP (Model Context Protocol) server over stdio, so coding agents
-//! (Claude Code, Codex, Grok Build, OpenCode, …) can call jev-rs as a tool.
+//! (Claude Code, Codex, Grok Build, OpenCode, …) can call xks as a tool.
 //!
 //! JSON-RPC 2.0, one message per line. Implements `initialize`, `ping`,
 //! `tools/list` and `tools/call`; notifications are accepted and ignored.
@@ -81,7 +81,7 @@ pub fn serve<S: Scorer>(judge: &Judge<S>) -> io::Result<()> {
                 json!({
                     "protocolVersion": params.get("protocolVersion").cloned().unwrap_or(json!(PROTOCOL_VERSION)),
                     "capabilities": {"tools": {"listChanged": false}},
-                    "serverInfo": {"name": "jev-rs", "version": env!("CARGO_PKG_VERSION")},
+                    "serverInfo": {"name": "xks", "version": env!("CARGO_PKG_VERSION")},
                     "instructions": "Call `judge` with a state and typed questions instead of asking an LLM to classify and parse."
                 }),
             ),

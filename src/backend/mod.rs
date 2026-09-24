@@ -45,13 +45,45 @@ pub trait Scorer: Send + Sync {
     /// Candidate strings are exact token texts (e.g. `" A"`).
     fn score(&self, prompt: &str, candidates: &[String]) -> Result<Scored, BackendError>;
 
+    /// Every fingerprint of one session: `items` are (suffix, candidates)
+    /// pairs whose prompts are `prefix` followed by the suffix. The default
+    /// scores them one after another; a backend that can hold the session
+    /// once and fork it (ARTICHOKE) overrides this.
+    fn score_many(
+        &self,
+        prefix: &str,
+        items: &[(String, Vec<String>)],
+    ) -> Result<Vec<Scored>, BackendError> {
+        items
+            .iter()
+            .map(|(suffix, c)| self.score(&format!("{prefix}{suffix}"), c))
+            .collect()
+    }
+
+    /// Whether candidates may be several tokens long (labels past 26
+    /// options). Only a backend that can read a label token by token (a
+    /// trie of forks) can; the others read one next token.
+    fn multi_token_labels(&self) -> bool {
+        false
+    }
+
     /// Human-readable identity for the `model` field.
     fn model_name(&self) -> String;
 }
 
 impl Scorer for Box<dyn Scorer> {
+    fn multi_token_labels(&self) -> bool {
+        (**self).multi_token_labels()
+    }
     fn score(&self, prompt: &str, candidates: &[String]) -> Result<Scored, BackendError> {
         (**self).score(prompt, candidates)
+    }
+    fn score_many(
+        &self,
+        prefix: &str,
+        items: &[(String, Vec<String>)],
+    ) -> Result<Vec<Scored>, BackendError> {
+        (**self).score_many(prefix, items)
     }
     fn model_name(&self) -> String {
         (**self).model_name()

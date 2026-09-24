@@ -94,15 +94,57 @@ pub fn softmax(logprobs: &[f64], t: f64) -> Vec<f64> {
     e.into_iter().map(|x| x / z).collect()
 }
 
-/// TypeSafe's documented confidence: how far the top probability sits above
-/// uniform, rescaled to [0, 1]. For 3 options: `(3·p_max − 1) / 2`.
-pub fn confidence(probs: &[f64]) -> f64 {
-    let n = probs.len();
-    if n < 2 {
+/// Normalise to a distribution; uniform when the total is zero.
+fn normalized(probs: &[f64]) -> Vec<f64> {
+    let total: f64 = probs.iter().sum();
+    if total <= 0.0 {
+        return vec![1.0 / probs.len() as f64; probs.len()];
+    }
+    probs.iter().map(|p| p / total).collect()
+}
+
+/// Choice confidence, as TypeSafe computes it (`system-one-adapter`,
+/// `choice_confidence`): the peak probability scaled from uniform (0) to
+/// certainty (1), `(p_max - 1/n) / (1 - 1/n)`.
+pub fn choice_confidence(probs: &[f64]) -> f64 {
+    if probs.len() < 2 {
         return 1.0;
     }
-    let pmax = probs.iter().cloned().fold(0.0, f64::max);
-    ((n as f64 * pmax - 1.0) / (n as f64 - 1.0)).clamp(0.0, 1.0)
+    let p = normalized(probs);
+    let u = 1.0 / p.len() as f64;
+    let pmax = p.iter().copied().fold(0.0, f64::max);
+    ((pmax - u) / (1.0 - u)).clamp(0.0, 1.0)
+}
+
+/// Score confidence, as TypeSafe computes it (`score_confidence`): how
+/// concentrated the levels are around the modal level, one minus the mean
+/// distance from the mode over the mean absolute deviation of a uniform
+/// distribution. Ordered levels make a near miss cheaper than a far one.
+pub fn score_confidence(probs: &[f64]) -> f64 {
+    if probs.len() < 2 {
+        return 1.0;
+    }
+    let p = normalized(probs);
+    let mode = argmax(&p) as f64;
+    let spread: f64 = p
+        .iter()
+        .enumerate()
+        .map(|(i, q)| q * (i as f64 - mode).abs())
+        .sum();
+    let n = p.len() as f64;
+    let center = (n - 1.0) / 2.0;
+    let uniform_mad: f64 = (0..p.len()).map(|i| (i as f64 - center).abs()).sum::<f64>() / n;
+    (1.0 - spread / uniform_mad).max(0.0)
+}
+
+/// Confidence for a question kind: Score has its own measure, everything
+/// else the Choice one.
+pub fn confidence(kind: &str, probs: &[f64]) -> f64 {
+    if kind == "score" {
+        score_confidence(probs)
+    } else {
+        choice_confidence(probs)
+    }
 }
 
 /// Probability-weighted mean level index.
@@ -125,11 +167,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn confidence_matches_docs() {
-        let c = confidence(&[0.6, 0.3, 0.1]);
-        assert!((c - 0.4).abs() < 1e-9);
-        assert_eq!(confidence(&[1.0, 0.0]), 1.0);
-        assert_eq!(confidence(&[0.5, 0.5]), 0.0);
+    fn confidence_matches_typesafe() {
+        // The cases of system-one-adapter tests/utils/test_confidence_metrics.py.
+        let close = |a: f64, b: f64| (a - b).abs() < 1e-9;
+        assert!(close(score_confidence(&[0.2; 5]), 0.0));
+        assert!(close(score_confidence(&[0.04; 5]), 0.0));
+        assert!(close(score_confidence(&[0.01, 0.02, 0.07, 0.3, 0.6]), 0.55));
+        assert!(close(choice_confidence(&[0.5, 0.5]), 0.0));
+        assert!(close(choice_confidence(&[0.2, 0.2]), 0.0));
+        assert!(close(choice_confidence(&[0.82, 0.18]), 0.64));
+        assert!(close(score_confidence(&[1.0]), 1.0));
+        assert!(close(choice_confidence(&[1.0]), 1.0));
+        // And the docs demo: three options, (3 p_max - 1) / 2.
+        assert!(close(choice_confidence(&[0.6, 0.3, 0.1]), 0.4));
     }
 
     #[test]
