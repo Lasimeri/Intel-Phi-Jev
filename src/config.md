@@ -15,3 +15,13 @@ else is expanded; a value needing more belongs in the environment.
 
 `load` runs first thing in `main`, before any thread exists, since it sets
 environment variables.
+
+Values are read as a shell reads them, for what these files use:
+unquoted, `"double"` (with `$HOME` expanded and `\"`, `\\`, `\$` escaped)
+or `'single'` (literal) segments, joined; a leading `~/`; an unquoted `#`
+at the start or after a blank starts a comment, and unquoted blanks end
+the value. `$HOME` and `${HOME}` expand only as that whole name. Before
+2026-09-24 `XKS_PERMUTATIONS=3  # rotations` read as `3  # rotations`
+(which the command line then refused), `'$HOME'` was expanded, and
+`$HOME_DIR` became the home directory plus `_DIR`. The same parser is
+Mechanical Jev's.

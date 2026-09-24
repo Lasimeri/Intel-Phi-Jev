@@ -313,13 +313,8 @@ fn detach(bind: &str) -> Result<(), String> {
     let dir = run_dir();
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let pidfile = dir.join("serve.pid");
-    if let Ok(pid) = std::fs::read_to_string(&pidfile) {
-        if Path::new(&format!("/proc/{}", pid.trim())).exists() {
-            return Err(format!(
-                "a server is already running (pid {}); xks stop",
-                pid.trim()
-            ));
-        }
+    if let Some(pid) = detached_server(&pidfile) {
+        return Err(format!("a server is already running (pid {pid}); xks stop"));
     }
     let log = dir.join("serve.log");
     let out = std::fs::File::create(&log).map_err(|e| e.to_string())?;
@@ -328,7 +323,21 @@ fn detach(bind: &str) -> Result<(), String> {
         .skip(1)
         .filter(|a| a != "--detach")
         .collect();
-    let child = Command::new(std::env::current_exe().map_err(|e| e.to_string())?)
+    let url = format!("http://{bind}");
+    let answers = || {
+        ureq::AgentBuilder::new()
+            .timeout(Duration::from_secs(2))
+            .build()
+            .get(&format!("{url}/health"))
+            .call()
+            .is_ok()
+    };
+    if answers() {
+        return Err(format!(
+            "something already answers on {bind} (a server not started with --detach?)"
+        ));
+    }
+    let mut child = Command::new(std::env::current_exe().map_err(|e| e.to_string())?)
         .args(args)
         .stdin(Stdio::null())
         .stdout(out)
@@ -337,7 +346,6 @@ fn detach(bind: &str) -> Result<(), String> {
         .spawn()
         .map_err(|e| e.to_string())?;
     std::fs::write(&pidfile, child.id().to_string()).map_err(|e| e.to_string())?;
-    let url = format!("http://{bind}");
     eprintln!(
         "xks: server pid {} starting, log {}",
         child.id(),
@@ -345,10 +353,16 @@ fn detach(bind: &str) -> Result<(), String> {
     );
     let t0 = Instant::now();
     while t0.elapsed() < Duration::from_secs(900) {
-        if !Path::new(&format!("/proc/{}", child.id())).exists() {
-            return Err(format!("the server exited; see {}", log.display()));
+        // Reaped here, so a child that dies at startup is seen at once
+        // (unreaped, its /proc entry would outlive it until the timeout).
+        if let Ok(Some(status)) = child.try_wait() {
+            let _ = std::fs::remove_file(&pidfile);
+            return Err(format!(
+                "the server exited ({status}); see {}",
+                log.display()
+            ));
         }
-        if ureq::get(&format!("{url}/health")).call().is_ok() {
+        if answers() {
             println!("{url}/v1/systemone");
             return Ok(());
         }
@@ -360,27 +374,52 @@ fn detach(bind: &str) -> Result<(), String> {
     ))
 }
 
-/// `stop`: end a detached server and give the cards their memory back.
+/// The pid in `pidfile` when that process is still a detached `xks serve`.
+/// A pid alone is not enough: after a crash or a reboot it can name any
+/// other process, which `stop` would then kill.
+fn detached_server(pidfile: &Path) -> Option<u32> {
+    let pid: u32 = std::fs::read_to_string(pidfile).ok()?.trim().parse().ok()?;
+    let cmdline = std::fs::read(format!("/proc/{pid}/cmdline")).ok()?;
+    is_server_cmdline(&cmdline).then_some(pid)
+}
+
+/// A NUL-separated command line that runs `xks ... serve` (directly, or
+/// the avx512 site's `phi512.sh ... xks serve`).
+fn is_server_cmdline(cmdline: &[u8]) -> bool {
+    let args: Vec<&[u8]> = cmdline.split(|&b| b == 0).collect();
+    let xks = args.iter().position(|a| a.ends_with(b"xks"));
+    xks.is_some_and(|i| args[i + 1..].iter().any(|a| *a == b"serve"))
+}
+
+/// `stop`: end a detached server (its whole process group, SIGKILL after
+/// 30 s) and give back the cards whose workers `xks` started. Workers
+/// something else started on the other cards are left alone.
 fn stop() -> Result<(), String> {
     let pidfile = run_dir().join("serve.pid");
-    if let Ok(pid) = std::fs::read_to_string(&pidfile) {
-        let pid = pid.trim().to_string();
-        let proc_dir = format!("/proc/{pid}");
-        if Path::new(&proc_dir).exists() {
-            let _ = Command::new("kill").arg(&pid).status();
+    match detached_server(&pidfile) {
+        Some(pid) => {
+            let group = format!("-{pid}");
+            let _ = Command::new("kill").args(["-TERM", "--", &group]).status();
+            let alive = || Path::new(&format!("/proc/{pid}")).exists();
             let t0 = Instant::now();
-            while Path::new(&proc_dir).exists() && t0.elapsed() < Duration::from_secs(30) {
+            while alive() && t0.elapsed() < Duration::from_secs(30) {
                 std::thread::sleep(Duration::from_millis(200));
+            }
+            if alive() {
+                let _ = Command::new("kill").args(["-KILL", "--", &group]).status();
+                std::thread::sleep(Duration::from_millis(500));
+            }
+            if alive() {
+                return Err(format!("server {pid} did not stop"));
             }
             eprintln!("xks: server {pid} stopped");
         }
-        let _ = std::fs::remove_file(&pidfile);
-    } else {
-        eprintln!("xks: no detached server");
+        None => eprintln!("xks: no detached server"),
     }
+    let _ = std::fs::remove_file(&pidfile);
     #[cfg(feature = "artichoke")]
     {
-        let cards = xks::site::card_windows();
+        let cards = xks::site::xks_workers();
         if !cards.is_empty() {
             xks::site::release(&cards)?;
             eprintln!("xks: card workers stopped, huge pages released on {cards:?}");
@@ -718,4 +757,31 @@ fn split_once(s: &str, c: char) -> Result<(&str, &str), String> {
     s.split_once(c)
         .map(|(a, b)| (a.trim(), b.trim()))
         .ok_or_else(|| format!("expected `{c}` in `{s}`"))
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn only_a_detached_xks_server_is_recognised() {
+        let is = |args: &[&str]| super::is_server_cmdline(args.join("\0").as_bytes());
+        assert!(is(&[
+            "/r/target/release/xks",
+            "serve",
+            "--bind",
+            "127.0.0.1:8090"
+        ]));
+        assert!(is(&["/r/target/release/xks", "--site", "cards", "serve"]));
+        assert!(is(&[
+            "/bin/bash",
+            "scripts/phi512.sh",
+            "--card",
+            "0",
+            "/r/target/avx512/release/xks",
+            "serve"
+        ]));
+        // A recycled pid: some other program, or xks doing something else.
+        assert!(!is(&["/usr/bin/firefox", "serve"]));
+        assert!(!is(&["/r/target/release/xks", "eval", "cases.jsonl"]));
+        assert!(!is(&[]));
+    }
 }

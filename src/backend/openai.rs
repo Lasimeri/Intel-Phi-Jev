@@ -40,10 +40,11 @@ impl OpenAiChat {
 
 /// Split a rendered prompt back into (system, user) text. The prompt module
 /// renders with `Template::Raw` for this backend, so the layout is
-/// `SYSTEM\n\nSituation:...\nAnswer:`.
+/// `SYSTEM\n\n<document>\n...\n</document>\n` and the question, ending in
+/// `\nAnswer:`. The document and the question are the user turn.
 fn split_prompt(prompt: &str) -> (&str, &str) {
-    match prompt.split_once("\n\nSituation:\n") {
-        Some((sys, rest)) => (sys, rest),
+    match prompt.find("\n\n<document>\n") {
+        Some(i) => (&prompt[..i], &prompt[i + 2..]),
         None => ("", prompt),
     }
 }
@@ -53,8 +54,8 @@ impl Scorer for OpenAiChat {
         let (system, rest) = split_prompt(prompt);
         // Drop the trailing "\nAnswer:" cue: the assistant turn is the answer.
         let user = format!(
-            "Situation:\n{}\n\nReply with the option letter only, nothing else.",
-            rest.trim_end_matches("Answer:").trim_end()
+            "{}\n\nReply with the option letter only, nothing else.",
+            rest.trim_end().trim_end_matches("Answer:").trim_end()
         );
         let mut body = json!({
             "model": self.model,
@@ -142,10 +143,12 @@ impl Scorer for OpenAiChat {
                 .get("prompt_tokens")
                 .and_then(Value::as_u64)
                 .unwrap_or(0)
-                - usage
-                    .pointer("/prompt_cache_hit_tokens")
-                    .and_then(Value::as_u64)
-                    .unwrap_or(0),
+                .saturating_sub(
+                    usage
+                        .pointer("/prompt_cache_hit_tokens")
+                        .and_then(Value::as_u64)
+                        .unwrap_or(0),
+                ),
             prompt_cached: usage
                 .pointer("/prompt_cache_hit_tokens")
                 .and_then(Value::as_u64)
@@ -157,5 +160,17 @@ impl Scorer for OpenAiChat {
 
     fn model_name(&self) -> String {
         format!("openai/{}", self.model)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn the_system_text_is_what_precedes_the_document() {
+        let (sys, user) =
+            super::split_prompt("SYS\n\nmore\n\n<document>\nstate\n</document>\nQ?\nAnswer:");
+        assert_eq!(sys, "SYS\n\nmore");
+        assert_eq!(user, "<document>\nstate\n</document>\nQ?\nAnswer:");
+        assert_eq!(super::split_prompt("no document"), ("", "no document"));
     }
 }

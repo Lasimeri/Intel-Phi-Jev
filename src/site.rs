@@ -194,6 +194,15 @@ fn ensure_worker(root: &Path, card: u32, cfg: &WorkerConfig) -> Result<(), Strin
     Ok(())
 }
 
+/// The cards whose workers `xks` started (a marker records each one's
+/// configuration): what `stop` gives back. `xks release` takes every card.
+pub fn xks_workers() -> Vec<u32> {
+    card_windows()
+        .into_iter()
+        .filter(|&c| marker(c).is_file())
+        .collect()
+}
+
 /// Stop the workers and give the cards their huge pages back.
 pub fn release(cards: &[u32]) -> Result<(), String> {
     let root = sibling_root();
@@ -229,13 +238,23 @@ pub struct Placed {
 pub fn prepare(site: Site, offload: bool) -> Result<Placed, String> {
     let inner = std::env::var_os(INNER).is_some();
     match site {
-        Site::X86 => Ok(Placed {
-            site,
-            cards: Vec::new(),
-            threads: 16,
-            repack: false,
-            flash_attn: true,
-        }),
+        Site::X86 => {
+            // The reference must be the host alone: a GGML_BACKEND_PATH
+            // inherited from the shell or a config file would load the
+            // payload into it, and x86 against cards would compare the
+            // payload with itself.
+            if std::env::var_os("GGML_BACKEND_PATH").is_some() {
+                eprintln!("xks: x86 site: ignoring GGML_BACKEND_PATH");
+                std::env::remove_var("GGML_BACKEND_PATH");
+            }
+            Ok(Placed {
+                site,
+                cards: Vec::new(),
+                threads: 16,
+                repack: false,
+                flash_attn: true,
+            })
+        }
         Site::Cards => {
             let root = sibling_root();
             let cards = card_windows();

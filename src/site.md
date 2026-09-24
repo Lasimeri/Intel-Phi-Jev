@@ -81,3 +81,7 @@ the host is untouched):
   thread waits on a card's multiply while its own AVX-512 region queues
   behind it on the same worker. The site now splits the cards by role:
   card 0 runs regions only, the payload uses the others.
+
+The x86 site removes an inherited `GGML_BACKEND_PATH` (with a line saying
+so): set in the shell or a config file, it loaded the payload into the
+reference, and x86 against cards compared the payload with itself.

@@ -7,3 +7,9 @@ since the server applies its own chat template. The answer then depends on
 the model emitting the label as its first token, so it is weaker than
 reading raw logits; kept from upstream for comparing against models that
 only exist behind such an API.
+
+The rendered prompt is split at `\n\n<document>\n`: the system text before
+it, the document and question after it as the user turn. It used to look
+for a `Situation:` header the renderer no longer writes, so the system
+message was always empty. A server reporting cache hits without
+`prompt_tokens` no longer wraps the evaluated count.

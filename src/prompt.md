@@ -58,3 +58,8 @@ the jev layout on 16 or 17. Under the jev layout the untrained subject puts
 0.62 of its probability on the offered answers (0.98 with letters) and is
 overconfident with the rest: Jev's format works for Jev because Jev was
 trained on it.
+
+In the `jev` layout a Choice label is the key as the answer's JSON carries
+it, escaped (`say \"hi\""}` for the key `say "hi"`), as the question above
+it shows the key; a raw quote or backslash was a continuation the subject
+never writes, and that key's probability went to the others.

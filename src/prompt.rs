@@ -303,7 +303,15 @@ pub fn render_jev(
             (
                 serde_json::json!({"type": "choice", "instructions": instructions, "criteria": ordered}),
                 "{\"choice\": \"",
-                keys.iter().map(|k| format!("{k}\"}}")).collect(),
+                // The key as the answer's JSON carries it: escaped, as the
+                // question above shows it (a quote or backslash in a raw key
+                // would be a continuation the subject never writes).
+                keys.iter()
+                    .map(|k| {
+                        let quoted = serde_json::to_string(k).unwrap_or_default();
+                        format!("{}\"}}", &quoted[1..quoted.len() - 1])
+                    })
+                    .collect(),
                 keys,
             )
         }

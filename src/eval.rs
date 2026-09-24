@@ -49,11 +49,16 @@ pub struct Row {
 
 /// Scored rows plus the number of cases whose backend call failed. A failed
 /// case contributes no rows; it is reported next to accuracy, as the public
-/// Jev benchmarks do. A rejected request (malformed case) still aborts.
+/// Jev benchmarks do. A malformed case (its questions do not parse) aborts;
+/// one the engine refuses for its size (past the context or TypeSafe's
+/// limits) is a failed case like any other, so one long case does not
+/// throw away the rest of a run.
 pub fn run<S: Scorer>(judge: &Judge<S>, cases: &[Case]) -> Result<(Vec<Row>, usize), BackendError> {
     let mut rows = Vec::new();
     let mut failed = 0usize;
     for (ci, c) in cases.iter().enumerate() {
+        crate::protocol::parse_questions(&c.questions)
+            .map_err(|m| BackendError::Rejected(format!("case {ci}: {m}")))?;
         let req = Request {
             model: c.model.clone(),
             state: c.state.clone(),
@@ -61,7 +66,6 @@ pub fn run<S: Scorer>(judge: &Judge<S>, cases: &[Case]) -> Result<(Vec<Row>, usi
         };
         let raws: Vec<RawQuestion> = match judge.raw(&req) {
             Ok(r) => r,
-            Err(BackendError::Rejected(m)) => return Err(BackendError::Rejected(m)),
             Err(e) => {
                 eprintln!("case {ci}: {e} (counted as failed)");
                 failed += 1;
@@ -92,14 +96,26 @@ pub fn run<S: Scorer>(judge: &Judge<S>, cases: &[Case]) -> Result<(Vec<Row>, usi
     Ok((rows, failed))
 }
 
-/// A gold label as an option index: a key, a level number, a bool.
+/// The option a gold label names: a key (a Score's level number is its
+/// key), `true`/`false` or `"true"`/`"false"` for a Noul, else a number
+/// read as an option index. `None` when it names no option, so a 1-based
+/// level or a stray key is an error, never an index past the end.
 fn gold_index(g: &Value, keys: &[String]) -> Option<usize> {
-    match g {
-        Value::Number(n) => n.as_u64().map(|x| x as usize),
-        Value::String(s) => keys.iter().position(|k| k == s).or_else(|| s.parse().ok()),
-        Value::Bool(b) => Some(if *b { 0 } else { 1 }),
+    let noul = keys.len() == 2 && keys[0] == "yes" && keys[1] == "no";
+    let key = |s: &str| keys.iter().position(|k| k == s);
+    let idx = match g {
+        Value::Number(n) => key(&n.to_string()).or_else(|| n.as_u64().map(|x| x as usize)),
+        Value::String(s) => key(s)
+            .or(match s.as_str() {
+                "true" if noul => Some(0),
+                "false" if noul => Some(1),
+                _ => None,
+            })
+            .or_else(|| s.parse().ok()),
+        Value::Bool(b) if noul => Some(if *b { 0 } else { 1 }),
         _ => None,
-    }
+    }?;
+    (idx < keys.len()).then_some(idx)
 }
 
 /// The same cases asked of the real Jev (TypeSafe's hosted API). Its
@@ -242,12 +258,15 @@ pub fn metrics(rows: &[Row], failed_cases: usize, cal: &Calibration) -> Metrics 
         .map(|(c, k, s)| (*c as f64 / n) * ((*k as f64 / *c as f64) - (s / *c as f64)).abs())
         .sum();
     // coverage: sort by confidence desc, take the longest prefix with error <= 5%
-    gated.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+    // Coverage is what a confidence threshold accepts, and a threshold
+    // cannot split rows of equal confidence: cut only where it changes.
+    gated.sort_by(|a, b| b.0.total_cmp(&a.0));
     let mut best = 0usize;
     let mut wrong = 0usize;
-    for (i, (_, ok)) in gated.iter().enumerate() {
+    for (i, (c, ok)) in gated.iter().enumerate() {
         wrong += (!ok) as usize;
-        if wrong as f64 / (i + 1) as f64 <= 0.05 {
+        let boundary = gated.get(i + 1).is_none_or(|next| next.0 != *c);
+        if boundary && wrong as f64 / (i + 1) as f64 <= 0.05 {
             best = i + 1;
         }
     }
@@ -289,4 +308,52 @@ pub fn fit(rows: &[Row]) -> Calibration {
         })
         .collect();
     Calibration::fit(&samples)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn keys(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn a_gold_label_names_an_option_or_nothing() {
+        let yn = keys(&["yes", "no"]);
+        let lv = keys(&["0", "1", "2"]);
+        let num = keys(&["16", "32", "64"]);
+        assert_eq!(gold_index(&json!(true), &yn), Some(0));
+        assert_eq!(gold_index(&json!("false"), &yn), Some(1));
+        assert_eq!(gold_index(&json!("no"), &yn), Some(1));
+        assert_eq!(gold_index(&json!(2), &lv), Some(2));
+        assert_eq!(gold_index(&json!("2"), &lv), Some(2));
+        // 1-based or stray labels are not options, never an index past the end.
+        assert_eq!(gold_index(&json!(3), &lv), None);
+        assert_eq!(gold_index(&json!("5"), &lv), None);
+        // A number that is a key is that key, not an index.
+        assert_eq!(gold_index(&json!(32), &num), Some(1));
+        assert_eq!(gold_index(&json!(true), &lv), None);
+    }
+
+    #[test]
+    fn coverage_does_not_split_tied_confidences() {
+        // Twenty rows of equal confidence, ten right and ten wrong: no
+        // threshold takes some of them, so nothing is covered.
+        let row = |gold: usize| Row {
+            case_index: 0,
+            id: String::new(),
+            kind: "noul".into(),
+            n: 2,
+            raw_logprobs: vec![0.9f64.ln(), 0.1f64.ln()],
+            gold,
+            latency_ms: 0.0,
+            prompt_evaluated: 0,
+            prompt_cached: 0,
+        };
+        let rows: Vec<Row> = (0..20).map(|i| row(usize::from(i >= 10))).collect();
+        let m = metrics(&rows, 0, &Calibration::default());
+        assert_eq!(m.coverage_at_5pct_error, 0.0);
+    }
 }

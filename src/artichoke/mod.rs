@@ -255,6 +255,12 @@ impl Artichoke {
         for (i, s) in segs.0.iter().enumerate() {
             out.extend(self.tokenize_with(&s.text, i == 0, !s.user)?);
         }
+        // A template that writes its BOS itself (Llama 3's <|begin_of_text|>)
+        // after the tokenizer has added one: keep one.
+        let bos = unsafe { sys::llama_vocab_bos(self.vocab) };
+        if out.len() >= 2 && out[0] == bos && out[1] == bos {
+            out.remove(0);
+        }
         Ok(out)
     }
 
@@ -508,13 +514,14 @@ impl Artichoke {
         &self,
         prompts: &[Vec<sys::llama_token>],
         cands: &[Vec<Vec<sys::llama_token>>],
+        shared: usize,
     ) -> Result<Vec<Scored>, BackendError> {
         let t0 = Instant::now();
+        check_limits(prompts, cands, shared, self.n_ctx)?;
         let mut g = self.inner.lock().expect("artichoke lock");
         let ctx = g.ctx;
         let mem = unsafe { sys::llama_get_memory(ctx) };
 
-        let shared = fork_point(prompts);
         let session = &prompts[0][..shared];
 
         // Reuse what sequence 0 already holds. A recurrent state cannot be
@@ -780,14 +787,8 @@ impl Scorer for Artichoke {
         };
         // Whole prompts, tokenized as one string each, so the fork point is
         // wherever their tokens part and never a tokenizer seam.
-        let prompts = items
-            .iter()
-            .map(|(s, _)| self.tokenize_segs(&prefix.concat(s)))
-            .collect::<Result<Vec<_>, _>>()?;
-        if prompts.iter().any(|p| p.is_empty()) {
-            return Err(BackendError::Rejected("empty prompt".into()));
-        }
-        self.fork_and_read(&prompts, &cands)
+        let (prompts, shared) = self.prepare(prefix, items)?;
+        self.fork_and_read(&prompts, &cands, shared)
     }
 
     fn multi_token_labels(&self) -> bool {
@@ -797,6 +798,54 @@ impl Scorer for Artichoke {
     fn model_name(&self) -> String {
         self.name.clone()
     }
+}
+
+/// TypeSafe's limits: the state and the longest question within 32k tokens,
+/// the whole request within 64k (docs.typesafe.ai, models).
+pub const BRANCH_LIMIT: usize = 32_000;
+pub const REQUEST_LIMIT: usize = 64_000;
+
+/// Refuse, before any prefill, a request that cannot be read: past
+/// TypeSafe's limits (counted with this subject's tokenizer, template
+/// included), or a fingerprint that with its longest label does not fit
+/// the context. A refusal is the caller's request (422), not a failure of
+/// the engine (502), and costs nothing.
+fn check_limits(
+    prompts: &[Vec<sys::llama_token>],
+    cands: &[Vec<Vec<sys::llama_token>>],
+    shared: usize,
+    n_ctx: usize,
+) -> Result<(), BackendError> {
+    let longest = prompts
+        .iter()
+        .zip(cands)
+        .map(|(p, cs)| {
+            p.len()
+                + cs.iter()
+                    .map(|c| c.len().saturating_sub(1))
+                    .max()
+                    .unwrap_or(0)
+        })
+        .max()
+        .unwrap_or(0);
+    let request = shared + prompts.iter().map(|p| p.len() - shared).sum::<usize>();
+    if longest > BRANCH_LIMIT {
+        return Err(BackendError::Rejected(format!(
+            "the state and a question come to {longest} tokens, past the {BRANCH_LIMIT} limit"
+        )));
+    }
+    if request > REQUEST_LIMIT {
+        return Err(BackendError::Rejected(format!(
+            "the request comes to {request} tokens, past the {REQUEST_LIMIT} limit"
+        )));
+    }
+    if longest > n_ctx {
+        return Err(BackendError::Rejected(format!(
+            "the state and a question come to {longest} tokens, past this server's context \
+             of {n_ctx} (xks --ctx)"
+        )));
+    }
+    Ok(())
 }
 
 /// The session's length in tokens: the longest prefix every prompt shares,
@@ -817,15 +866,66 @@ impl Artichoke {
         prefix: &Segs,
         items: &[(Segs, Vec<String>)],
     ) -> Result<usize, BackendError> {
+        Ok(self.prepare(prefix, items)?.1)
+    }
+
+    /// Every fingerprint's whole prompt, and where they fork: where their
+    /// tokens part, but never past the end of the session itself (the
+    /// prefix's own tokens). Cut inside the questions, the kept session
+    /// would run into one request's question text, and the same state asked
+    /// with other questions could not reuse it: a recurrent state cannot be
+    /// cut back, so it would be prefilled again from the start.
+    fn prepare(
+        &self,
+        prefix: &Segs,
+        items: &[(Segs, Vec<String>)],
+    ) -> Result<(Vec<Vec<sys::llama_token>>, usize), BackendError> {
         let prompts = items
             .iter()
             .map(|(s, _)| self.tokenize_segs(&prefix.concat(s)))
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(fork_point(&prompts))
+        if prompts.iter().any(|p| p.is_empty()) {
+            return Err(BackendError::Rejected("empty prompt".into()));
+        }
+        let own = self.tokenize_segs(prefix)?;
+        let session_end = own
+            .iter()
+            .zip(&prompts[0])
+            .take_while(|(a, b)| a == b)
+            .count();
+        Ok((prompts.clone(), fork_point(&prompts).min(session_end)))
     }
 }
 
 /// The directory the engine loads CPU variants from by default.
 pub fn default_backend_dir() -> &'static Path {
     Path::new(env!("XKS_LLAMA_BUILD_DIR"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn oversized_requests_are_refused_before_any_prefill() {
+        let p = |n: usize| vec![1 as sys::llama_token; n];
+        let one = vec![vec![1 as sys::llama_token]];
+        // Fits.
+        assert!(check_limits(&[p(100), p(120)], &[one.clone(), one.clone()], 90, 16384).is_ok());
+        // Past this server's context, before TypeSafe's limits.
+        let e = check_limits(&[p(20_000)], std::slice::from_ref(&one), 19_990, 16384).unwrap_err();
+        assert!(matches!(e, BackendError::Rejected(ref m) if m.contains("--ctx")));
+        // Past the 32k branch limit.
+        assert!(check_limits(&[p(33_000)], std::slice::from_ref(&one), 32_990, 65_536).is_err());
+        // Past the 64k request limit with every branch inside 32k.
+        let many: Vec<_> = (0..5).map(|_| p(31_000)).collect();
+        let cands: Vec<_> = (0..5).map(|_| one.clone()).collect();
+        assert!(matches!(
+            check_limits(&many, &cands, 10_000, 131_072),
+            Err(BackendError::Rejected(ref m)) if m.contains("64000")
+        ));
+        // A multi-token label counts past the prompt.
+        let long = vec![vec![1 as sys::llama_token; 10]];
+        assert!(check_limits(&[p(16_380)], &[long], 16_000, 16_384).is_err());
+    }
 }

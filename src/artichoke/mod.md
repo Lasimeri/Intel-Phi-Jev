@@ -65,3 +65,24 @@ CPU` or `Phi, CPU`).
 several-token labels every label decoded token by token) and `read_split`
 (the same two decodes a fork makes, without the copy) exist only to be
 compared against the forked reading.
+
+## Where the session ends, and what is refused first (2026-09-24)
+
+The kept session (sequence 0) ends where the state does: the fork point is
+where the fingerprints' tokens part, but never past the prefix's own
+tokens. It used to be the longest common prefix of the rendered prompts,
+which runs into question text (with one question, the whole prompt but one
+token), so the same state asked with other questions matched only part of
+the kept session; a recurrent state cannot be cut back (`seq_rm` refuses a
+partial removal on the hybrid 35B), so the whole state was prefilled again.
+Now a repeated state costs only its questions, as the top of this file says.
+
+Before any prefill, `check_limits` refuses (422) a request past TypeSafe's
+limits (the state and the longest question within 32,000 tokens, the whole
+request within 64,000, counted with this subject's tokenizer, template
+included) or one whose longest fingerprint with its longest label does not
+fit the context (`--ctx`). An oversized state used to be prefilled first
+and then fail as a 502, which the official SDKs retry.
+
+A template that writes its own BOS (Llama 3's `<|begin_of_text|>`) after
+the tokenizer has added one keeps one.
