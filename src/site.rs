@@ -46,13 +46,33 @@ impl Site {
 /// under phi512, so that one does not re-execute again.
 pub const INNER: &str = "XKS_SITE_INNER";
 
-/// The sibling repository holding the payload, the workers and phi512.
+/// The sibling's directory names: its GitHub clone's and the spaced one.
+pub const SIBLING_NAMES: [&str; 2] = ["Intel-Phi-AVX512", "Intel Phi AVX-512"];
+
+/// The sibling repository holding the payload, the workers and phi512:
+/// `PHI_AVX512_ROOT`, else a directory next to this checkout under either
+/// name, else one in `$HOME`. The first that has `scripts/phi-vpu.sh`;
+/// the spaced name next to this checkout when none has (so an error
+/// names a path).
 pub fn sibling_root() -> PathBuf {
     if let Some(p) = std::env::var_os("PHI_AVX512_ROOT") {
         return PathBuf::from(p);
     }
-    let home = std::env::var_os("HOME").unwrap_or_default();
-    Path::new(&home).join("Intel Phi AVX-512")
+    let here = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut bases: Vec<PathBuf> = here.parent().map(Path::to_path_buf).into_iter().collect();
+    if let Some(home) = std::env::var_os("HOME") {
+        bases.push(PathBuf::from(home));
+    }
+    find_sibling(&bases, &SIBLING_NAMES, "scripts/phi-vpu.sh")
+        .unwrap_or_else(|| here.with_file_name(SIBLING_NAMES[1]))
+}
+
+/// The first `base/name` holding `probe`, bases in order, names in order.
+pub fn find_sibling(bases: &[PathBuf], names: &[&str], probe: &str) -> Option<PathBuf> {
+    bases
+        .iter()
+        .flat_map(|b| names.iter().map(move |n| b.join(n)))
+        .find(|d| d.join(probe).exists())
 }
 
 /// The cards with a host window (`/dev/shm/phi-hostmem` is card 0,
@@ -342,4 +362,34 @@ fn reexec_avx512() -> Result<Placed, String> {
         .env(INNER, "1")
         .exec();
     Err(format!("could not run phi512: {err}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_sibling_is_found_under_either_name_nearest_base_first() {
+        let tmp = std::env::temp_dir().join(format!("xks-sibling-{}", std::process::id()));
+        let (near, home) = (tmp.join("near"), tmp.join("home"));
+        let probe = "scripts/phi-vpu.sh";
+        let plant = |base: &Path, name: &str| {
+            let d = base.join(name).join("scripts");
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(d.join("phi-vpu.sh"), "").unwrap();
+        };
+        let bases = [near.clone(), home.clone()];
+        assert_eq!(find_sibling(&bases, &SIBLING_NAMES, probe), None);
+        plant(&home, SIBLING_NAMES[1]);
+        assert_eq!(
+            find_sibling(&bases, &SIBLING_NAMES, probe),
+            Some(home.join(SIBLING_NAMES[1]))
+        );
+        plant(&near, SIBLING_NAMES[0]);
+        assert_eq!(
+            find_sibling(&bases, &SIBLING_NAMES, probe),
+            Some(near.join(SIBLING_NAMES[0]))
+        );
+        std::fs::remove_dir_all(&tmp).unwrap();
+    }
 }

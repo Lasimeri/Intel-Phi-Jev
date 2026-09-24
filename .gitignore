@@ -1,6 +1,12 @@
+# Build outputs
 /target/
 **/*.rs.bk
-*.swp
+
+# This machine's own settings (and any key): never tracked
+/xks.local.conf
+
+# Editors and OS
 .vscode/
 .idea/
-/xks.local.conf
+*.swp
+.DS_Store

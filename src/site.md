@@ -9,6 +9,21 @@
 `auto` is `cards` when `/dev/shm/phi-hostmem*` exists (a card is up), else
 `x86`.
 
+## Finding the sibling
+
+The payload, the workers and phi512 are Intel-Phi-AVX512's. In order, the
+first that exists (has `scripts/phi-vpu.sh`):
+
+1. `PHI_AVX512_ROOT`.
+2. A checkout next to this one (`CARGO_MANIFEST_DIR`'s parent), named
+   `Intel-Phi-AVX512` (a `git clone`) or `Intel Phi AVX-512`.
+3. The same two names in `$HOME`.
+
+The family's lookup order is environment, `PATH`, next to this checkout,
+`$HOME` (Mechanical Jev finds `xks` with all four); the sibling has no
+command on `PATH`, so that step is skipped here.
+`find_sibling` is the search, tested against a temporary tree.
+
 ## The dropper
 
 `prepare` installs the payload into this process: `GGML_BACKEND_PATH` names

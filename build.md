@@ -11,7 +11,11 @@ builds.
 `make build-x86` uses the default (the x86-64 build, dynamic backends, all
 CPU variants). `make build-avx512` points `LLAMA_BUILD_DIR` at
 `build-avx512/bin` and `CARGO_TARGET_DIR` at `target/avx512`, giving the
-second binary the `avx512` site runs under phi512.
+second binary the `avx512` site runs under phi512. It is skipped, with a
+line saying so, when that llama.cpp build does not exist, so `make build`
+and `make check` work on a machine with only the x86-64 build; only the
+`avx512` site needs the second binary. `make LLAMA_CPP_DIR=...` moves both
+builds' source tree.
 
 The script reads `CMakeCache.txt` next to the build's `bin/`: without
 `GGML_BACKEND_DL:BOOL=ON` it sets `cfg(xks_static_cpu)`, and the engine then

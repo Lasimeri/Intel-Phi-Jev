@@ -3,7 +3,10 @@
 
 .DEFAULT_GOAL := help
 XKS := target/release/xks
-AVX512_ENV := LLAMA_BUILD_DIR=$(HOME)/llama.cpp/build-avx512/bin CARGO_TARGET_DIR=target/avx512
+LLAMA_CPP_DIR ?= $(HOME)/llama.cpp
+export LLAMA_CPP_DIR
+AVX512_LLAMA := $(LLAMA_CPP_DIR)/build-avx512/bin
+AVX512_ENV := LLAMA_BUILD_DIR=$(AVX512_LLAMA) CARGO_TARGET_DIR=target/avx512
 
 .PHONY: help build build-x86 build-avx512 serve stop query jev jev-eval subprojects subproject test fmt clippy docs-check check clean
 
@@ -15,8 +18,9 @@ build: build-x86 build-avx512 ## Build both xks binaries (x86-64 and AVX-512)
 build-x86: ## xks against llama.cpp's x86-64 build (build-native)
 	cargo build --release
 
-build-avx512: ## xks against llama.cpp's AVX-512 build, for the avx512 site
-	$(AVX512_ENV) cargo build --release
+build-avx512: ## xks against llama.cpp's AVX-512 build, for the avx512 site (skipped when that build is absent)
+	@if [ -d "$(AVX512_LLAMA)" ]; then $(AVX512_ENV) cargo build --release; \
+	else echo "build-avx512: skipped, no $(AVX512_LLAMA) (llama.cpp built with GGML_AVX512=ON; only the avx512 site needs it)"; fi
 
 serve: build-x86 ## Start the server in the background (site and subject from xks.conf)
 	$(XKS) serve --detach

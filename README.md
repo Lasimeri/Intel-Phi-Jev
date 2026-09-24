@@ -1,16 +1,12 @@
 # Intel Phi Jev: `xks`
 
-**The real Jev** is TypeSafe's hosted model: it runs only on their servers
-(no weights exist outside them), and `xks --backend-kind jev` (`make jev`)
-calls it with your `TYPESAFE_API_KEY` from console.typesafe.ai, set in
-`xks.local.conf`. Everything else here is a local imitation of its interface.
-
 A local implementation of TypeSafe's Jev contract, the first "System One"
 model: send a **state** and typed **questions** (Noul, Choice, Score), get back
 typed answers with probability distributions and confidence, never
 generated text. `xks` serves the same wire format as TypeSafe
 (`POST /v1/systemone`, [docs.typesafe.ai/api](https://docs.typesafe.ai/api.md)),
-so the official SDKs work against it by pointing `TYPESAFE_BASE_URL` at it.
+so [Mechanical Jev](https://github.com/Lasimeri/Mechanical-Jev) (`mjev`)
+and the official SDKs work against it by pointing `TYPESAFE_BASE_URL` at it.
 
 What is different from the hosted Jev: the model is an open-weight LLM on
 this machine (default Qwen3.8-35B-A3B), read by its next-token distribution,
@@ -23,7 +19,7 @@ readings after the fact instead.
 ## One command each
 
 ```sh
-make build          # both binaries: x86-64 and AVX-512 builds of llama.cpp
+make build          # xks against llama.cpp's x86-64 build, and its AVX-512 build when present
 make serve          # background server, subject and site from xks.conf
 curl -s localhost:8090/v1/systemone -d @examples/query.json | jq .
 make stop           # stop it and release the cards' huge pages
@@ -136,6 +132,29 @@ git revision, time and configuration, read in
 - The 35B's readings move by up to 0.8 in label log-probability with how
   the prompt is cut into decodes (a dense 0.5B moves 0.045): a noise floor
   on how finely its probabilities can be read.
+
+## The hosted Jev
+
+TypeSafe's own Jev runs only on their servers (no weights exist outside
+them). `xks --backend-kind jev` (`make jev`, `make jev-eval`) sends the
+same requests to it for comparison, with a `TYPESAFE_API_KEY` from
+console.typesafe.ai in `xks.local.conf` (not tracked). Nothing else here
+needs it: Mechanical Jev's `make closeness` measures `xks` against Jev's
+published answers instead.
+
+## The repositories
+
+| repository | what | how it is found |
+| --- | --- | --- |
+| [Intel-Phi-3120A](https://github.com/Lasimeri/Intel-Phi-3120A) | the cards' software stack: boots them, serves their memory, the `phi` command | by Intel-Phi-AVX512 |
+| [Intel-Phi-AVX512](https://github.com/Lasimeri/Intel-Phi-AVX512) | the cards as an AVX-512 co-processor: the payload, the workers, phi512 | `PHI_AVX512_ROOT`, else a checkout next to this one, else in `$HOME` |
+| Intel-Phi-Jev (this one) | `xks`, the local Jev | `MJEV_XKS`, else `xks` on PATH, else a checkout next to Mechanical-Jev, else in `$HOME` |
+| [Mechanical-Jev](https://github.com/Lasimeri/Mechanical-Jev) | `mjev`, the asking side, and Jev reverse engineered from its docs | |
+
+Clone them side by side and nothing needs configuring: each finds the
+next under its clone's name (`Intel-Phi-AVX512`) or the spaced one
+(`Intel Phi AVX-512`). [`CONTRIBUTING.md`](CONTRIBUTING.md) has the
+rules they share.
 
 ## Provenance
 
