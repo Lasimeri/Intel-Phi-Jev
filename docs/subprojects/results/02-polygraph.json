@@ -1,0 +1,87 @@
+{
+  "subproject": "02",
+  "name": "polygraph",
+  "what": "ARTICHOKE's fork read three ways (forked, split, control) on the 35B, the copy isolated with one fork, and the dense 0.5B as the noise floor",
+  "utc": "2026-09-24T12:25:44Z",
+  "seconds": 761.0,
+  "git": "6f7b372",
+  "dirty": false,
+  "host": "GMNGDSKTP",
+  "results": {
+    "subject": "/home/lasimeri/models/Qwen3.8-35B-A3B/Qwen3.8-35B-A3B-Q4_K_M.gguf",
+    "small": "/home/lasimeri/models/tiny/qwen2.5-0.5b-instruct-fp16.gguf",
+    "site": "x86",
+    "batched_forks": {
+      "subject": "artichoke/Qwen3.8-35B-A3B-Q4_K_M",
+      "recurrent": true,
+      "fingerprints": 18,
+      "forked_vs_split": {
+        "max": 1.3421230621803986,
+        "mean": 0.2631942832080089
+      },
+      "split_vs_control": {
+        "max": 0.48493730391215095,
+        "mean": 0.15352186146836802
+      },
+      "forked_vs_control": {
+        "max": 1.3421230621803986,
+        "mean": 0.2577400126759674
+      },
+      "same_argmax": 17,
+      "min_label_mass": 0.9418642329303076,
+      "mean_label_mass": 0.9703630788371952,
+      "forked_ms": 135873.589354,
+      "control_ms": 105109.233981,
+      "forked_tokens": 1796,
+      "control_tokens": 2568
+    },
+    "one_fork": {
+      "subject": "artichoke/Qwen3.8-35B-A3B-Q4_K_M",
+      "recurrent": true,
+      "fingerprints": 6,
+      "forked_vs_split": {
+        "max": 0.0,
+        "mean": 0.0
+      },
+      "split_vs_control": {
+        "max": 0.3028309083424432,
+        "mean": 0.1127635571673699
+      },
+      "forked_vs_control": {
+        "max": 0.3028309083424432,
+        "mean": 0.1127635571673699
+      },
+      "same_argmax": 6,
+      "min_label_mass": 0.944669109767868,
+      "mean_label_mass": 0.9691691891711328,
+      "forked_ms": 40223.404219,
+      "control_ms": 29739.605646000004,
+      "forked_tokens": 596,
+      "control_tokens": 848
+    },
+    "dense_small": {
+      "subject": "artichoke/qwen2.5-0.5b-instruct-fp16",
+      "recurrent": false,
+      "fingerprints": 18,
+      "forked_vs_split": {
+        "max": 0.008832346309677774,
+        "mean": 0.0034130422318434167
+      },
+      "split_vs_control": {
+        "max": 0.02836350017166467,
+        "mean": 0.007493037622528694
+      },
+      "forked_vs_control": {
+        "max": 0.02836271641067256,
+        "mean": 0.008268018452395035
+      },
+      "same_argmax": 18,
+      "min_label_mass": 0.8846507506372487,
+      "mean_label_mass": 0.9570643775988774,
+      "forked_ms": 15696.336924,
+      "control_ms": 25466.095039,
+      "forked_tokens": 1802,
+      "control_tokens": 2550
+    }
+  }
+}

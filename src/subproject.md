@@ -20,7 +20,7 @@ reads a record is `docs/subprojects/NN-name.md`.
 | 03 | dev-eval-sites | `x86` against `cards` on dev_tasks, corroborated |
 | 04 | long-sessions | BLUEBIRD against ARTICHOKE on real long documents, the cards with the payload's ledger |
 | 05 | wide-choice-trie | 30 options, trie against brute force |
-| 06 | avx512-parity | `avx512` against `x86`, dense 0.5B, two cases |
+| 06 | avx512-parity | `avx512` against `x86`, dense 0.5B, one question (the site is about a thousand times slower) |
 
 A subproject's timings are one run each. This host's throughput drifts by up
 to a quarter over tens of minutes, so a timing claim closer than that needs

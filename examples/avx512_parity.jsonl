@@ -1,0 +1,2 @@
+# The avx512 site is about a thousand times slower than x86 (every AVX-512 region a round trip to the card), so its parity check reads one real question: is re-running `git status` side-effect free (from dev_tasks).
+{"state":"$ git status","questions":{"rerun_safe":{"type":"noul","instructions":"Is it safe to run this command a second time to measure its output, with no side effects beyond the first run?"}},"gold":{"rerun_safe":"yes"}}

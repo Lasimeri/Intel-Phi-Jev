@@ -1,0 +1,38 @@
+{
+  "subproject": "05",
+  "name": "wide-choice-trie",
+  "what": "A 30-option Choice (multi-token labels) read as a trie of forks against brute force",
+  "utc": "2026-09-24T12:38:25Z",
+  "seconds": 124.1,
+  "git": "6f7b372",
+  "dirty": false,
+  "host": "GMNGDSKTP",
+  "results": {
+    "subject": "/home/lasimeri/models/tiny/qwen2.5-0.5b-instruct-fp16.gguf",
+    "site": "x86",
+    "polygraph": {
+      "subject": "artichoke/qwen2.5-0.5b-instruct-fp16",
+      "recurrent": false,
+      "fingerprints": 1,
+      "forked_vs_split": {
+        "max": 0.023353661711063012,
+        "mean": 0.023353661711063012
+      },
+      "split_vs_control": {
+        "max": 0.0,
+        "mean": 0.0
+      },
+      "forked_vs_control": {
+        "max": 0.023353661711063012,
+        "mean": 0.023353661711063012
+      },
+      "same_argmax": 1,
+      "min_label_mass": 0.7534704524080441,
+      "mean_label_mass": 0.7534704524080441,
+      "forked_ms": 3501.885994,
+      "control_ms": 120338.01053,
+      "forked_tokens": 358,
+      "control_tokens": 10380
+    }
+  }
+}

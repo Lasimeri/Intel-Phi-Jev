@@ -234,32 +234,43 @@ pub fn prepare(site: Site, offload: bool) -> Result<Placed, String> {
         }
         Site::Avx512 if !inner => reexec_avx512(),
         Site::Avx512 => {
-            // Inside phi512: the payload for the multiplies on every card,
-            // card 0's worker with the seamless path's page pool as well.
+            // Inside phi512. The cards split by role: card 0 runs phi512's
+            // regions and nothing else; the payload's multiplies go to the
+            // others. One worker serving both deadlocked: the single host
+            // thread waited on a multiply while its own region queued
+            // behind it on the same card (site.md).
             let root = sibling_root();
             let cards = card_windows();
-            if cards.is_empty() {
-                return Err("no card is up (no /dev/shm/phi-hostmem*); phi status".into());
+            if !cards.contains(&0) {
+                return Err("phi512 runs on card 0, which is not up; phi status".into());
             }
-            let lib = payload(&root)?;
-            for &c in &cards {
-                let cfg = if c == 0 {
-                    WorkerConfig {
-                        hugepages: 2100,
-                        args: String::new(),
-                    }
-                } else {
-                    WorkerConfig {
-                        hugepages: 2400,
-                        args: "-e 0".into(),
-                    }
-                };
-                ensure_worker(&root, c, &cfg)?;
+            ensure_worker(
+                &root,
+                0,
+                &WorkerConfig {
+                    hugepages: 768,
+                    args: String::new(),
+                },
+            )?;
+            let payload_cards: Vec<u32> = cards.iter().copied().filter(|&c| c != 0).collect();
+            if payload_cards.is_empty() {
+                eprintln!("xks: one card up: phi512 only, no payload");
+            } else {
+                let lib = payload(&root)?;
+                for &c in &payload_cards {
+                    ensure_worker(
+                        &root,
+                        c,
+                        &WorkerConfig {
+                            hugepages: 2400,
+                            args: "-e 0".into(),
+                        },
+                    )?;
+                }
+                install(&lib, &payload_cards, offload, None);
             }
-            // Card 0 keeps room for the seamless pool; one host thread,
-            // since the AVX-512 build's OpenMP barrier spins while one
-            // thread's region runs on the card.
-            install(&lib, &cards, offload, Some(3.4e9));
+            // One host thread: the AVX-512 build's OpenMP barrier spins
+            // while one thread's region runs on the card.
             std::env::set_var("PHI_GGML_HOST_THREADS", "1");
             Ok(Placed {
                 site,

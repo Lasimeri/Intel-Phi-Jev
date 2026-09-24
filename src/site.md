@@ -4,7 +4,7 @@
 | --- | --- | --- | --- | --- | --- |
 | `x86` | x86-64 (`build-native`) | no | untouched | 16 | auto |
 | `cards` | x86-64 | yes, offloaded | 2400 huge pages, `-e 0` (no seamless pool) | 12 | auto |
-| `avx512` | AVX-512 (`build-avx512`) under phi512 | yes, 3.4 GB per card | card 0: 2100 huge pages with the seamless pool; others as `cards` | 1 | off |
+| `avx512` | AVX-512 (`build-avx512`) under phi512 | yes, on every card but 0 | card 0: phi512 only (768 huge pages with the seamless pool); others as `cards` | 1 | off |
 
 `auto` is `cards` when `/dev/shm/phi-hostmem*` exists (a card is up), else
 `x86`.
@@ -61,3 +61,8 @@ the host is untouched):
   memory the process never mapped, after five minutes of regions that ran.
   The planner's reach for that loop overshoots; the site runs with flash
   attention off to route around it.
+- card 0 serving phi512's regions and the payload's multiplies at once:
+  after 32 minutes a multiply got no answer within 60 s. The one host
+  thread waits on a card's multiply while its own AVX-512 region queues
+  behind it on the same worker. The site now splits the cards by role:
+  card 0 runs regions only, the payload uses the others.

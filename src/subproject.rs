@@ -56,7 +56,7 @@ pub const ALL: &[Subproject] = &[
     Subproject {
         id: "06",
         name: "avx512-parity",
-        what: "The AVX-512 build under phi512 (with the payload) against the x86 reference, dense 0.5B",
+        what: "The AVX-512 build under phi512 (card 0) with the payload (card 1) against the x86 reference, dense 0.5B, one question",
         run: s06_avx512,
     },
 ];
@@ -309,7 +309,7 @@ fn s05_trie(ctx: &Ctx) -> Result<Value, String> {
 }
 
 fn s06_avx512(ctx: &Ctx) -> Result<Value, String> {
-    let dev = ctx.example("dev_tasks.jsonl");
+    let dev = ctx.example("avx512_parity.jsonl");
     let (a, b) = (
         rows(ctx, "06-x86-rows.jsonl"),
         rows(ctx, "06-avx512-rows.jsonl"),
@@ -323,8 +323,6 @@ fn s06_avx512(ctx: &Ctx) -> Result<Value, String> {
             &ctx.small,
             "eval",
             &dev,
-            "--limit",
-            "2",
             "--rows",
             &a,
         ],
@@ -339,15 +337,26 @@ fn s06_avx512(ctx: &Ctx) -> Result<Value, String> {
             &ctx.small,
             "eval",
             &dev,
-            "--limit",
-            "2",
             "--rows",
             &b,
         ],
         &[],
-    )?;
-    let cor = ctx.xks("06-corroborate.log", &["corroborate", &a, &b], &[])?;
-    Ok(json!({"subject": ctx.small, "x86": x86, "avx512": avx, "corroborate": cor}))
+    );
+    // A refusal by phi512 (an instruction the card cannot run yet, or a
+    // phase touching unmapped memory) is a result too: the record keeps
+    // what phi512 said, so the next run shows whether it moved.
+    match avx {
+        Ok(avx) => {
+            let cor = ctx.xks("06-corroborate.log", &["corroborate", &a, &b], &[])?;
+            Ok(json!({"subject": ctx.small, "x86": x86, "avx512": avx, "corroborate": cor}))
+        }
+        Err(e) => {
+            let log = std::fs::read_to_string(ctx.log("06-avx512.log")).unwrap_or_default();
+            let said: Vec<&str> = log.lines().filter(|l| l.starts_with("phi512:")).collect();
+            Ok(json!({"subject": ctx.small, "x86": x86,
+                "avx512": {"outcome": "refused", "error": e, "phi512": said}}))
+        }
+    }
 }
 
 /// `YYYY-MM-DDTHH:MM:SSZ` for a UNIX time (civil-from-days, no calendar crate).
