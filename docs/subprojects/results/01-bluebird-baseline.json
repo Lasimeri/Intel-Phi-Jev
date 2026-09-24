@@ -3,10 +3,10 @@
   "name": "bluebird-baseline",
   "what": "BLUEBIRD: stock llama-server (x86, no repack) on the first 10 dev_tasks cases",
   "outcome": "finished",
-  "utc": "2026-09-24T14:28:08Z",
-  "seconds": 77.0,
+  "utc": "2026-09-24T15:38:22Z",
+  "seconds": 201.7,
   "budget_seconds": 600,
-  "git": "da3d231",
+  "git": "6f944a0",
   "dirty": false,
   "host": "GMNGDSKTP",
   "results": {
@@ -16,14 +16,14 @@
       "questions": 30,
       "failed_cases": 0,
       "accuracy": 0.8333333333333334,
-      "brier": 0.24149360438967568,
-      "ece": 0.15404220591916887,
-      "mean_confidence": 0.5036012655759562,
+      "brier": 0.24250355307312751,
+      "ece": 0.15454219389924956,
+      "mean_confidence": 0.5018028568621086,
       "coverage_at_5pct_error": 0.7666666666666667,
-      "latency_p50_ms": 2255.655712,
-      "latency_p95_ms": 2795.317488,
-      "prompt_tokens_evaluated": 4312,
-      "prompt_tokens_cached": 4312,
+      "latency_p50_ms": 3232.0170350000003,
+      "latency_p95_ms": 12202.117301000002,
+      "prompt_tokens_evaluated": 7820,
+      "prompt_tokens_cached": 7820,
       "by_kind": {
         "choice": 1.0,
         "noul": 0.9,
@@ -32,8 +32,8 @@
       "subject": "bluebird/Qwen3.8-35B-A3B-Q4_K_M",
       "site": "remote",
       "cases": 10,
-      "wall_s": 71.28,
-      "per_case_s": 7.13
+      "wall_s": 156.59,
+      "per_case_s": 15.66
     }
   }
 }

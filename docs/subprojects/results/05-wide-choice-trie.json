@@ -2,9 +2,11 @@
   "subproject": "05",
   "name": "wide-choice-trie",
   "what": "A 30-option Choice (multi-token labels) read as a trie of forks against brute force",
-  "utc": "2026-09-24T12:38:25Z",
-  "seconds": 124.1,
-  "git": "6f7b372",
+  "outcome": "finished",
+  "utc": "2026-09-24T15:53:03Z",
+  "seconds": 19.0,
+  "budget_seconds": 600,
+  "git": "6f944a0",
   "dirty": false,
   "host": "GMNGDSKTP",
   "results": {
@@ -29,8 +31,8 @@
       "same_argmax": 1,
       "min_label_mass": 0.7534704524080441,
       "mean_label_mass": 0.7534704524080441,
-      "forked_ms": 3501.885994,
-      "control_ms": 120338.01053,
+      "forked_ms": 546.252599,
+      "control_ms": 17907.119649999997,
       "forked_tokens": 358,
       "control_tokens": 10380
     }

@@ -2,14 +2,71 @@
   "subproject": "03",
   "name": "dev-eval-sites",
   "what": "ARTICHOKE on the first 10 dev_tasks cases at the x86 site and the cards site, corroborated",
-  "outcome": "failed",
-  "utc": "2026-09-24T14:33:53Z",
-  "seconds": 131.1,
+  "outcome": "finished",
+  "utc": "2026-09-24T15:43:46Z",
+  "seconds": 184.1,
   "budget_seconds": 600,
-  "git": "3b9603c",
+  "git": "6f944a0",
   "dirty": false,
   "host": "GMNGDSKTP",
   "results": {
-    "error": "xks --site cards eval /home/lasimeri/Intel Phi Jev/examples/dev_tasks.jsonl --limit 10 --rows /home/lasimeri/Intel Phi Jev/target/subprojects/03-cards-rows.jsonl: output is not JSON: expected value at line 1 column 1"
+    "subject": "/home/lasimeri/models/Qwen3.8-35B-A3B/Qwen3.8-35B-A3B-Q4_K_M.gguf",
+    "x86": {
+      "questions": 30,
+      "failed_cases": 0,
+      "accuracy": 0.8,
+      "brier": 0.22915980428533192,
+      "ece": 0.16525311485615815,
+      "mean_confidence": 0.5177743217160664,
+      "coverage_at_5pct_error": 0.8,
+      "latency_p50_ms": 1564.0524194,
+      "latency_p95_ms": 4745.469207600001,
+      "prompt_tokens_evaluated": 5204,
+      "prompt_tokens_cached": 2616,
+      "by_kind": {
+        "choice": 1.0,
+        "noul": 0.9,
+        "score": 0.5
+      },
+      "subject": "artichoke/Qwen3.8-35B-A3B-Q4_K_M",
+      "site": "x86",
+      "cases": 10,
+      "wall_s": 77.34,
+      "per_case_s": 7.73
+    },
+    "cards": {
+      "questions": 30,
+      "failed_cases": 0,
+      "accuracy": 0.8333333333333334,
+      "brier": 0.22867161656753188,
+      "ece": 0.20334557675349096,
+      "mean_confidence": 0.526901405122233,
+      "coverage_at_5pct_error": 0.8333333333333334,
+      "latency_p50_ms": 1648.8653498,
+      "latency_p95_ms": 4950.9496727999995,
+      "prompt_tokens_evaluated": 5204,
+      "prompt_tokens_cached": 2616,
+      "by_kind": {
+        "choice": 1.0,
+        "noul": 0.9,
+        "score": 0.6
+      },
+      "subject": "artichoke/Qwen3.8-35B-A3B-Q4_K_M",
+      "site": "cards",
+      "cases": 10,
+      "wall_s": 95.08,
+      "per_case_s": 9.51
+    },
+    "corroborate": {
+      "matched": 30,
+      "only_in_a": 0,
+      "only_in_b": 0,
+      "same_argmax": 29,
+      "max_prob_diff": 0.10889337699741304,
+      "mean_prob_diff": 0.02782073531558932,
+      "accuracy_a": 0.8,
+      "accuracy_b": 0.8333333333333334,
+      "pairs": []
+    }
   }
 }

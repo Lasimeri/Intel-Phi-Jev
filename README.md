@@ -114,7 +114,15 @@ The wire names (`/v1/systemone`, `state`, `questions`, `noul`, `choice`,
 Every number comes from a subproject record under
 [`docs/subprojects/results/`](docs/subprojects/results/), each with its
 git revision, time and configuration, read in
-[`docs/subprojects/`](docs/subprojects/README.md).
+[`docs/subprojects/`](docs/subprojects/README.md). The 35B-A3B at Q4_K_M:
+
+| what | result |
+| --- | --- |
+| the fork's copy, recurrent state included (02) | bit-exact (0.000) |
+| two long sessions, BLUEBIRD against ARTICHOKE (04) | 233 s against **76 s**, 17,110 against 5,065 tokens, same 16 answers |
+| x86 against the cards (03, 07) | 29 of 30 and 32 of 32 answers agree; cards compute a third of the run |
+| a 30-option Choice as a trie (05) | brute force to 0.023, 33 times faster |
+| Jev's own 28 published questions (Mechanical Jev `make closeness`) | **28 of 28** of Jev's decisions, mean probability difference 0.113 |
 
 ## Limits
 

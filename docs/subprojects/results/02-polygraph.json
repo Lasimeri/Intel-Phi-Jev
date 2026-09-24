@@ -3,10 +3,10 @@
   "name": "polygraph",
   "what": "The fork read three ways (forked, split, control) on the 35B, the copy isolated with one fork, and a dense 0.5B as the noise floor",
   "outcome": "finished",
-  "utc": "2026-09-24T14:31:52Z",
-  "seconds": 121.3,
+  "utc": "2026-09-24T15:41:44Z",
+  "seconds": 116.9,
   "budget_seconds": 600,
-  "git": "3b9603c",
+  "git": "6f944a0",
   "dirty": false,
   "host": "GMNGDSKTP",
   "results": {
@@ -32,8 +32,8 @@
       "same_argmax": 12,
       "min_label_mass": 0.9441455901228232,
       "mean_label_mass": 0.9684945363094084,
-      "forked_ms": 21597.070418,
-      "control_ms": 29756.90576,
+      "forked_ms": 20654.316328,
+      "control_ms": 26511.854961000005,
       "forked_tokens": 1195,
       "control_tokens": 1705
     },
@@ -56,8 +56,8 @@
       "same_argmax": 3,
       "min_label_mass": 0.9600770857954194,
       "mean_label_mass": 0.9749870873243752,
-      "forked_ms": 5368.449737,
-      "control_ms": 6539.2999199999995,
+      "forked_ms": 5232.934276,
+      "control_ms": 6365.933574000001,
       "forked_tokens": 299,
       "control_tokens": 427
     },
@@ -80,8 +80,8 @@
       "same_argmax": 18,
       "min_label_mass": 0.8846507506372487,
       "mean_label_mass": 0.9570643775988774,
-      "forked_ms": 2236.0942969999996,
-      "control_ms": 3708.570294999999,
+      "forked_ms": 2213.200371,
+      "control_ms": 3825.878075,
       "forked_tokens": 1802,
       "control_tokens": 2550
     }
