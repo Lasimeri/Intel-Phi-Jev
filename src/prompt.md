@@ -39,3 +39,22 @@ seen. Past that, up to TypeSafe's 255: three zero-padded digits (` 001` to
 ` 255`), all one length, so no label is a prefix of another and a label's
 probability is the product of its tokens'. Noul is always A (yes) and B
 (no). Score levels are lettered in order and read back as an expected level.
+
+## Layouts
+
+`--layout letters` (the default) renders a fingerprint as above: lettered
+options, answered with one letter. `--layout jev` renders it the way
+Mechanical Jev's reverse engineering infers Jev does
+(`docs/reverse-engineering.md` there): a fixed preamble of Jev's length
+(written for this project; Jev's is unpublished), the question as its
+compact JSON, and the answer's JSON opened up to the value, so the next
+tokens are the option key with its closing `"}`, a level number, or
+` true` / ` false`, cut where the subject's tokenizer cuts them. Those
+labels are several tokens long, so the jev layout needs ARTICHOKE.
+
+Measured on Jev's 28 published questions (Mechanical Jev, `make
+closeness`): the letters layout makes Jev's decision on 26 to 28 of them,
+the jev layout on 16 or 17. Under the jev layout the untrained subject puts
+0.62 of its probability on the offered answers (0.98 with letters) and is
+overconfident with the rest: Jev's format works for Jev because Jev was
+trained on it.

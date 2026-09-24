@@ -75,6 +75,10 @@ struct Cli {
     /// Extra JSON merged into openai requests, e.g. '{"thinking":{"type":"disabled"}}'.
     #[arg(long, env = "XKS_EXTRA")]
     extra: Option<String>,
+    /// How fingerprints are laid out: letters (lettered options) | jev (the
+    /// layout reconstructed from Jev's documentation; needs artichoke).
+    #[arg(long, env = "XKS_LAYOUT", default_value = "letters")]
+    layout: String,
     /// Chat template of the subject: chatml | gemma | llama3 | raw
     #[arg(long, env = "XKS_TEMPLATE", default_value = "chatml")]
     template: String,
@@ -82,7 +86,7 @@ struct Cli {
     #[arg(long, alias = "calibration", env = "XKS_CONDITIONING")]
     conditioning: Option<PathBuf>,
     /// Cyclic option rotations to average for `choice` (position-bias control).
-    #[arg(long, default_value_t = 1)]
+    #[arg(long, env = "XKS_PERMUTATIONS", default_value_t = 1)]
     permutations: usize,
     /// Include raw logprobs and per-question latency in responses.
     #[arg(long)]
@@ -547,6 +551,7 @@ fn run() -> Result<(), String> {
     };
     let cfg = JudgeConfig {
         template,
+        layout: cli.layout.parse()?,
         calibration: conditioning,
         permutations: cli.permutations,
         debug: cli.debug,

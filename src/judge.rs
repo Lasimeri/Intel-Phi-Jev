@@ -13,6 +13,9 @@ use crate::score::{argmax, confidence, expected_level, softmax, Calibration};
 #[derive(Debug, Clone)]
 pub struct JudgeConfig {
     pub template: Template,
+    /// How fingerprints are laid out: lettered options, or the layout
+    /// reconstructed from Jev's documentation.
+    pub layout: prompt::Layout,
     pub calibration: Calibration,
     /// For `choice`: score this many cyclic rotations of the option order and
     /// average the per-key probabilities. 1 = no position-bias averaging.
@@ -24,6 +27,7 @@ impl Default for JudgeConfig {
     fn default() -> Self {
         Self {
             template: Template::ChatMl,
+            layout: prompt::Layout::Letters,
             calibration: Calibration::default(),
             permutations: 1,
             debug: false,
@@ -46,6 +50,9 @@ pub struct RawQuestion {
     pub logprobs: Vec<f64>,
     pub prompt_evaluated: u64,
     pub prompt_cached: u64,
+    /// Probability the subject put on the labels at all (mean over
+    /// rotations): well under one means the layout is off its distribution.
+    pub label_mass: f64,
     pub latency_ms: f64,
 }
 
@@ -57,7 +64,11 @@ impl<S: Scorer> Judge<S> {
     /// Score every question and return uncalibrated per-option logprobs.
     pub fn raw(&self, req: &Request) -> Result<Vec<RawQuestion>, BackendError> {
         let questions = parse_questions(&req.questions).map_err(BackendError::Rejected)?;
-        let prefix = prompt::prefix(self.cfg.template, &render_state(&req.state));
+        let prefix = prompt::prefix_for(
+            self.cfg.layout,
+            self.cfg.template,
+            &render_state(&req.state),
+        );
         // Render every fingerprint (each question, each rotation) first, so
         // the backend sees the whole session at once and can fork it.
         struct Plan {
@@ -79,9 +90,11 @@ impl<S: Scorer> Judge<S> {
                     "question `{id}`: {n} options; a Choice takes at most {MAX_OPTIONS}"
                 )));
             }
-            if n > LETTERS && !self.scorer.multi_token_labels() {
+            if (n > LETTERS || self.cfg.layout == prompt::Layout::Jev)
+                && !self.scorer.multi_token_labels()
+            {
                 return Err(BackendError::Rejected(format!(
-                    "question `{id}`: {n} options needs --backend-kind artichoke (this backend reads one-token labels, at most {LETTERS})"
+                    "question `{id}`: this needs --backend-kind artichoke (the jev layout, or more than {LETTERS} options, answers with labels of several tokens)"
                 )));
             }
             let perms = if kind == "choice" {
@@ -97,7 +110,14 @@ impl<S: Scorer> Judge<S> {
             };
             for r in 0..perms {
                 let order: Vec<usize> = (0..n).map(|i| (i + r) % n).collect();
-                let rendered = prompt::render(self.cfg.template, &prefix, q, Some(&order));
+                let rendered = match self.cfg.layout {
+                    prompt::Layout::Letters => {
+                        prompt::render(self.cfg.template, &prefix, q, Some(&order))
+                    }
+                    prompt::Layout::Jev => {
+                        prompt::render_jev(self.cfg.template, &prefix, q, Some(&order))
+                    }
+                };
                 if r == 0 {
                     // rotation 0 is the identity: keys are in request order.
                     plan.keys = rendered.keys.clone();
@@ -117,10 +137,12 @@ impl<S: Scorer> Judge<S> {
             let mut evaluated = 0;
             let mut cached = 0;
             let mut latency_ms = 0.0;
+            let mut mass = 0.0;
             for order in &plan.orders {
                 let s = scored.next().ok_or_else(|| {
                     BackendError::Malformed("backend returned too few readings".into())
                 })?;
+                mass += s.logprobs.iter().map(|l| l.exp()).sum::<f64>() / perms as f64;
                 let p = softmax(&s.logprobs, 1.0);
                 // rendered position `pos` holds original option `order[pos]`.
                 for (pos, &orig) in order.iter().enumerate() {
@@ -137,6 +159,7 @@ impl<S: Scorer> Judge<S> {
                 logprobs: mean.iter().map(|p| p.max(1e-300).ln()).collect(),
                 prompt_evaluated: evaluated,
                 prompt_cached: cached,
+                label_mass: mass,
                 latency_ms,
             });
         }
@@ -195,6 +218,7 @@ impl<S: Scorer> Judge<S> {
                     "raw_logprobs": r.logprobs,
                     "prompt_evaluated": r.prompt_evaluated,
                     "prompt_cached": r.prompt_cached,
+                    "label_mass": round(r.label_mass),
                     "latency_ms": round(r.latency_ms),
                 }));
             }
