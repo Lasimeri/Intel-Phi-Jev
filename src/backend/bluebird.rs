@@ -1,7 +1,11 @@
-//! `llama-server` backend: one `POST /completion` with `n_predict: 1` and
-//! `n_probs: N`, reading the raw (pre-sampling) top-N log-probabilities of
-//! the first generated position. `cache_prompt: true` makes every question
-//! after the first on the same state cost one evaluated token.
+//! BLUEBIRD, the first program: a `llama-server` over HTTP, the baseline
+//! ARTICHOKE is measured against. One `POST /completion` per fingerprint
+//! with `n_predict: 1` and `n_probs: N`, reading the raw (pre-sampling)
+//! top-N log-probabilities of the first generated position. With
+//! `cache_prompt: true` an attention-only model re-evaluates only each
+//! fingerprint's suffix; a hybrid one (recurrent state, like the 35B-A3B)
+//! re-evaluates the whole prompt every time, since a recurrent state cannot
+//! be cut back to where the prompts part (subproject 01). See bluebird.md.
 
 use std::time::Instant;
 
@@ -10,7 +14,7 @@ use serde_json::{json, Value};
 use super::{BackendError, ScoreCost, Scored, Scorer};
 
 #[derive(Debug, Clone)]
-pub struct LlamaServer {
+pub struct Bluebird {
     pub base_url: String,
     /// How many top tokens to request. Must comfortably exceed the number
     /// of options, since unrelated tokens compete for the slots.
@@ -18,7 +22,7 @@ pub struct LlamaServer {
     pub model_name: String,
 }
 
-impl LlamaServer {
+impl Bluebird {
     pub fn new(base_url: impl Into<String>) -> Self {
         let base_url = base_url.into().trim_end_matches('/').to_string();
         let model_name = probe_model(&base_url).unwrap_or_else(|| "llama-server".to_string());
@@ -39,10 +43,10 @@ fn probe_model(base: &str) -> Option<String> {
     let id = v.get("data")?.get(0)?.get("id")?.as_str()?;
     // llama-server reports the GGUF path; keep the file stem.
     let stem = std::path::Path::new(id).file_stem()?.to_str()?;
-    Some(format!("llamacpp/{stem}"))
+    Some(format!("bluebird/{stem}"))
 }
 
-impl Scorer for LlamaServer {
+impl Scorer for Bluebird {
     fn score(&self, prompt: &str, candidates: &[String]) -> Result<Scored, BackendError> {
         let body = json!({
             "prompt": prompt,

@@ -102,7 +102,7 @@ pub fn run(
             .iter()
             .map(|(id, q)| (id.clone(), prompt::render(template, &prefix, q, None)))
             .collect();
-        let items: Vec<(String, Vec<String>)> = rendered
+        let items: Vec<(prompt::Segs, Vec<String>)> = rendered
             .iter()
             .map(|(_, r)| (r.suffix.clone(), r.labels.clone()))
             .collect();

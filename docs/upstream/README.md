@@ -188,7 +188,7 @@ Qwen3.8-Next re-evaluates the full prompt for every question in
 
 Two further experiments against real Claude Code session logs, predicting
 output floods before a command runs and triaging tool output after it, are
-in [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md); one is a clear win for the
+in [`docs/EXPERIMENTS.md`](https://github.com/yijunyu/jev-rs/blob/d8db037c510c8fdb2649bab81152a837eda3c764/docs/EXPERIMENTS.md); one is a clear win for the
 judge, the other a clear loss to a blind rule.
 
 Hosted Jev has been independently measured at 236-276 ms p50 per request

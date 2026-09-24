@@ -67,7 +67,7 @@ impl<S: Scorer> Judge<S> {
             orders: Vec<Vec<usize>>,
         }
         let mut plans = Vec::with_capacity(questions.len());
-        let mut items: Vec<(String, Vec<String>)> = Vec::new();
+        let mut items: Vec<(prompt::Segs, Vec<String>)> = Vec::new();
         for (id, q) in &questions {
             let (kind, n) = match q {
                 Question::Noul { .. } => ("noul", 2),

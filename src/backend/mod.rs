@@ -2,15 +2,19 @@
 //! log-probabilities of each candidate next token? Everything else
 //! (rendering, softmax, calibration, the wire format) is backend-independent.
 //!
-//! Implemented: [`llamacpp::LlamaServer`] (any GGUF via `llama-server`).
-//! Planned: an in-process ds4-rs-metal session (`AttnStepState` fork per
-//! question), an in-process llama.cpp context (`llama_kv_self_seq_cp`).
+//! Implemented: [`bluebird::Bluebird`] (a `llama-server` over HTTP, the
+//! baseline), [`openai::OpenAiChat`] (chat/completions with logprobs),
+//! [`typesafe::TypeSafe`] (the hosted Jev, for `query --compare`), and the
+//! in-process ARTICHOKE engine in `crate::artichoke`, which forks the session
+//! with `llama_memory_seq_cp` (what was planned upstream).
 
-pub mod llamacpp;
+pub mod bluebird;
 pub mod openai;
 pub mod typesafe;
 
 use thiserror::Error;
+
+use crate::prompt::Segs;
 
 #[derive(Debug, Error)]
 pub enum BackendError {
@@ -41,22 +45,24 @@ pub struct Scored {
 }
 
 pub trait Scorer: Send + Sync {
-    /// Log-probabilities of `candidates` as the *next* token after `prompt`.
-    /// Candidate strings are exact token texts (e.g. `" A"`).
+    /// Log-probabilities of `candidates` as the continuation of `prompt`, a
+    /// flattened string (user text escaped, `Segs::flat`). Candidate strings
+    /// are exact label texts (e.g. `" A"`).
     fn score(&self, prompt: &str, candidates: &[String]) -> Result<Scored, BackendError>;
 
     /// Every fingerprint of one session: `items` are (suffix, candidates)
     /// pairs whose prompts are `prefix` followed by the suffix. The default
-    /// scores them one after another; a backend that can hold the session
-    /// once and fork it (ARTICHOKE) overrides this.
+    /// flattens each prompt and scores them one after another; a backend
+    /// that tokenizes segments itself and can hold the session once and
+    /// fork it (ARTICHOKE) overrides this.
     fn score_many(
         &self,
-        prefix: &str,
-        items: &[(String, Vec<String>)],
+        prefix: &Segs,
+        items: &[(Segs, Vec<String>)],
     ) -> Result<Vec<Scored>, BackendError> {
         items
             .iter()
-            .map(|(suffix, c)| self.score(&format!("{prefix}{suffix}"), c))
+            .map(|(suffix, c)| self.score(&prefix.concat(suffix).flat(), c))
             .collect()
     }
 
@@ -80,8 +86,8 @@ impl Scorer for Box<dyn Scorer> {
     }
     fn score_many(
         &self,
-        prefix: &str,
-        items: &[(String, Vec<String>)],
+        prefix: &Segs,
+        items: &[(Segs, Vec<String>)],
     ) -> Result<Vec<Scored>, BackendError> {
         (**self).score_many(prefix, items)
     }

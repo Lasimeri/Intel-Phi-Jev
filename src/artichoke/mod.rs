@@ -22,6 +22,7 @@ use std::sync::{Mutex, Once};
 use std::time::Instant;
 
 use crate::backend::{BackendError, ScoreCost, Scored, Scorer};
+use crate::prompt::Segs;
 
 /// How to open the engine.
 #[derive(Debug, Clone)]
@@ -47,6 +48,9 @@ pub struct Options {
     /// Phi payload is loaded: a repacked weight lives in a CPU-only buffer
     /// the payload is never offered, so it could never reach a card.
     pub repack: bool,
+    /// Let llama.cpp use flash attention where it would (off on the avx512
+    /// site: its tiled loop is one the card cannot yet run, site.md).
+    pub flash_attn: bool,
 }
 
 impl Options {
@@ -64,6 +68,7 @@ impl Options {
             backend_dir: None,
             verbose: false,
             repack: !cards,
+            flash_attn: true,
         }
     }
 }
@@ -86,6 +91,29 @@ unsafe extern "C" fn log_cb(level: sys::ggml_log_level, text: *const c_char, _: 
         // SAFETY: llama.cpp passes a NUL-terminated string valid for the call.
         let s = unsafe { CStr::from_ptr(text) };
         eprint!("{}", s.to_string_lossy());
+    }
+}
+
+/// Register the backends. A build with dynamic backends loads the best
+/// CPU variant from `dir` and then `GGML_BACKEND_PATH` (the payload, when
+/// the site installed it). A build without them (the AVX-512 one) has its
+/// CPU backend linked in, so only the payload is loaded.
+///
+/// # Safety
+/// Calls into ggml's registry; once, before any model is loaded.
+unsafe fn load_backends(dir: &CStr) {
+    #[cfg(not(xks_static_cpu))]
+    unsafe {
+        sys::ggml_backend_load_all_from_path(dir.as_ptr());
+    }
+    #[cfg(xks_static_cpu)]
+    {
+        let _ = dir;
+        if let Some(p) = std::env::var_os("GGML_BACKEND_PATH") {
+            if let Ok(p) = CString::new(p.as_bytes()) {
+                unsafe { sys::ggml_backend_load(p.as_ptr()) };
+            }
+        }
     }
 }
 
@@ -132,9 +160,17 @@ impl Artichoke {
         INIT.call_once(|| unsafe {
             sys::llama_log_set(Some(log_cb), ptr::null_mut());
             sys::llama_backend_init();
-            // Loads the best CPU variant from `dir`, then GGML_BACKEND_PATH
-            // (the Phi backend, when scripts/phi-ggml.sh set it).
-            sys::ggml_backend_load_all_from_path(dir_c.as_ptr());
+            load_backends(&dir_c);
+            let n = sys::ggml_backend_dev_count();
+            let names: Vec<String> = (0..n)
+                .map(|i| {
+                    let d = sys::ggml_backend_dev_get(i);
+                    CStr::from_ptr(sys::ggml_backend_dev_name(d))
+                        .to_string_lossy()
+                        .into_owned()
+                })
+                .collect();
+            eprintln!("xks: devices: {}", names.join(", "));
         });
         let path = CString::new(opts.gguf.as_os_str().as_bytes()).map_err(|e| e.to_string())?;
         let model = unsafe {
@@ -161,6 +197,9 @@ impl Artichoke {
             // them into per-sequence streams.
             cp.kv_unified = true;
             cp.no_perf = true;
+            if !opts.flash_attn {
+                cp.flash_attn_type = sys::llama_flash_attn_type_LLAMA_FLASH_ATTN_TYPE_DISABLED;
+            }
             sys::llama_init_from_model(model, cp)
         };
         if ctx.is_null() {
@@ -199,19 +238,21 @@ impl Artichoke {
         })
     }
 
-    /// A rendered prompt: the model's start token, and the template's
-    /// special tokens parsed (user text in it is defanged, prompt.rs).
-    fn tokenize(
-        &self,
-        text: &str,
-        add_special: bool,
-    ) -> Result<Vec<sys::llama_token>, BackendError> {
-        self.tokenize_with(text, add_special, true)
-    }
-
     /// Plain text: no start token, no special tokens.
     fn tokenize_plain(&self, text: &str) -> Result<Vec<sys::llama_token>, BackendError> {
         self.tokenize_with(text, false, false)
+    }
+
+    /// A rendered prompt, segment by segment: template text with special
+    /// tokens parsed, user text without, the model's start token before the
+    /// first. Nothing a caller sent can become a special token, and the
+    /// caller's text is tokenized as it was sent.
+    fn tokenize_segs(&self, segs: &Segs) -> Result<Vec<sys::llama_token>, BackendError> {
+        let mut out = Vec::new();
+        for (i, s) in segs.0.iter().enumerate() {
+            out.extend(self.tokenize_with(&s.text, i == 0, !s.user)?);
+        }
+        Ok(out)
     }
 
     fn tokenize_with(
@@ -343,7 +384,7 @@ impl Artichoke {
     /// 0 from an empty cache, no fork, nothing kept.
     pub fn read_control(
         &self,
-        prompt: &str,
+        prompt: &Segs,
         candidates: &[String],
     ) -> Result<Scored, BackendError> {
         let t0 = Instant::now();
@@ -352,7 +393,7 @@ impl Artichoke {
             .iter()
             .map(|c| self.label_tokens(&mut g, c))
             .collect::<Result<Vec<_>, _>>()?;
-        let toks = self.tokenize(prompt, true)?;
+        let toks = self.tokenize_segs(prompt)?;
         let ctx = g.ctx;
         let mem = unsafe { sys::llama_get_memory(ctx) };
         g.cached.clear();
@@ -417,7 +458,7 @@ impl Artichoke {
     /// decode. The same two decodes a fork makes, without the copy.
     pub fn read_split(
         &self,
-        prompt: &str,
+        prompt: &Segs,
         candidates: &[String],
         at: usize,
     ) -> Result<Scored, BackendError> {
@@ -427,7 +468,7 @@ impl Artichoke {
             .iter()
             .map(|c| self.label_id(&mut g, c))
             .collect::<Result<Vec<_>, _>>()?;
-        let toks = self.tokenize(prompt, true)?;
+        let toks = self.tokenize_segs(prompt)?;
         let at = at.min(toks.len() - 1);
         let ctx = g.ctx;
         unsafe { sys::llama_memory_clear(sys::llama_get_memory(ctx), true) };
@@ -707,14 +748,18 @@ impl Drop for Artichoke {
 
 impl Scorer for Artichoke {
     fn score(&self, prompt: &str, candidates: &[String]) -> Result<Scored, BackendError> {
-        let mut v = self.score_many("", &[(prompt.to_string(), candidates.to_vec())])?;
+        // A flattened prompt: its user text is already escaped, so the
+        // whole string may be read as template.
+        let mut whole = Segs::default();
+        whole.t(prompt);
+        let mut v = self.score_many(&Segs::default(), &[(whole, candidates.to_vec())])?;
         Ok(v.remove(0))
     }
 
     fn score_many(
         &self,
-        prefix: &str,
-        items: &[(String, Vec<String>)],
+        prefix: &Segs,
+        items: &[(Segs, Vec<String>)],
     ) -> Result<Vec<Scored>, BackendError> {
         if items.is_empty() {
             return Ok(Vec::new());
@@ -734,7 +779,7 @@ impl Scorer for Artichoke {
         // wherever their tokens part and never a tokenizer seam.
         let prompts = items
             .iter()
-            .map(|(s, _)| self.tokenize(&format!("{prefix}{s}"), true))
+            .map(|(s, _)| self.tokenize_segs(&prefix.concat(s)))
             .collect::<Result<Vec<_>, _>>()?;
         if prompts.iter().any(|p| p.is_empty()) {
             return Err(BackendError::Rejected("empty prompt".into()));
@@ -766,12 +811,12 @@ impl Artichoke {
     /// Where `score_many` would cut these fingerprints from their session.
     pub fn session_tokens(
         &self,
-        prefix: &str,
-        items: &[(String, Vec<String>)],
+        prefix: &Segs,
+        items: &[(Segs, Vec<String>)],
     ) -> Result<usize, BackendError> {
         let prompts = items
             .iter()
-            .map(|(s, _)| self.tokenize(&format!("{prefix}{s}"), true))
+            .map(|(s, _)| self.tokenize_segs(&prefix.concat(s)))
             .collect::<Result<Vec<_>, _>>()?;
         Ok(fork_point(&prompts))
     }

@@ -14,8 +14,11 @@
 #[cfg(feature = "artichoke")]
 pub mod artichoke;
 pub mod backend;
+pub mod config;
+pub mod corroborate;
 pub mod eval;
 pub mod judge;
+pub mod ledger;
 pub mod mcp;
 #[cfg(feature = "artichoke")]
 pub mod polygraph;
@@ -23,3 +26,7 @@ pub mod prompt;
 pub mod protocol;
 pub mod score;
 pub mod server;
+#[cfg(feature = "artichoke")]
+pub mod site;
+#[cfg(feature = "artichoke")]
+pub mod subproject;

@@ -5,7 +5,9 @@ This repository began as an import of jev-rs by Yijun Yu and contributors
 (https://github.com/yijunyu/jev-rs), commit recorded in UPSTREAM, used under
 the MIT license or the Apache License 2.0 (LICENSE-MIT, LICENSE-APACHE).
 The upstream README is kept at docs/upstream/README.md. The import changed
-only one thing before the first commit: em and en dashes were replaced with
-"--" and "-" to satisfy this repository's no-dash rule.
+only two things: em and en dashes were replaced with
+"--" and "-" to satisfy this repository's no-dash rule, and its links
+to upstream files not imported (docs/EXPERIMENTS.md) point at the pinned
+upstream commit.
 
 This work is offered under the same two licenses, at your option.
