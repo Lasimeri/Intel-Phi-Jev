@@ -151,9 +151,11 @@ published answers instead.
 | Intel-Phi-Jev (this one) | `xks`, the local Jev | `MJEV_XKS`, else `xks` on PATH, else a checkout next to Mechanical-Jev, else in `$HOME` |
 | [Mechanical-Jev](https://github.com/Lasimeri/Mechanical-Jev) | `mjev`, the asking side, and Jev reverse engineered from its docs | |
 
-Clone them side by side and nothing needs configuring: each finds the
-next under its clone's name (`Intel-Phi-AVX512`) or the spaced one
-(`Intel Phi AVX-512`). [`CONTRIBUTING.md`](CONTRIBUTING.md) has the
+Cloned side by side, the repositories find each other without
+configuration, under each one's clone name (`Intel-Phi-AVX512`) or the
+spaced one (`Intel Phi AVX-512`). What does need setting: the model and
+llama.cpp paths in [`xks.conf`](xks.conf), and for the cards, the stack's
+`phi` command with a card up. [`CONTRIBUTING.md`](CONTRIBUTING.md) has the
 rules they share.
 
 ## Provenance
