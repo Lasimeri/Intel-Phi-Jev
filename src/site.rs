@@ -130,14 +130,21 @@ fn marker(card: u32) -> PathBuf {
     base.join("xks").join(format!("worker-{card}"))
 }
 
+/// The sibling's worker script. Its stdout goes to our stderr: `xks`'s own
+/// stdout carries only its result (a subproject parses it as JSON, and a
+/// "worker started" line in it broke subproject 03).
 fn phi_vpu(root: &Path, card: u32, args: &[&str]) -> Command {
     let mut c = Command::new(root.join("scripts/phi-vpu.sh"));
-    c.arg("-c").arg(card.to_string()).args(args);
+    c.arg("-c")
+        .arg(card.to_string())
+        .args(args)
+        .stdout(std::process::Stdio::from(std::io::stderr()));
     c
 }
 
 fn polling(root: &Path, card: u32) -> bool {
     phi_vpu(root, card, &["status"])
+        .stdout(std::process::Stdio::piped())
         .output()
         .map(|o| String::from_utf8_lossy(&o.stdout).contains("worker: polling"))
         .unwrap_or(false)

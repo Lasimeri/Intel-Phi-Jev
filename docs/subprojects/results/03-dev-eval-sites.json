@@ -1,0 +1,15 @@
+{
+  "subproject": "03",
+  "name": "dev-eval-sites",
+  "what": "ARTICHOKE on the first 10 dev_tasks cases at the x86 site and the cards site, corroborated",
+  "outcome": "failed",
+  "utc": "2026-09-24T14:33:53Z",
+  "seconds": 131.1,
+  "budget_seconds": 600,
+  "git": "3b9603c",
+  "dirty": false,
+  "host": "GMNGDSKTP",
+  "results": {
+    "error": "xks --site cards eval /home/lasimeri/Intel Phi Jev/examples/dev_tasks.jsonl --limit 10 --rows /home/lasimeri/Intel Phi Jev/target/subprojects/03-cards-rows.jsonl: output is not JSON: expected value at line 1 column 1"
+  }
+}

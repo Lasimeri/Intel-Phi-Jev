@@ -3,11 +3,11 @@
   "name": "polygraph",
   "what": "The fork read three ways (forked, split, control) on the 35B, the copy isolated with one fork, and a dense 0.5B as the noise floor",
   "outcome": "finished",
-  "utc": "2026-09-24T14:29:30Z",
-  "seconds": 112.1,
+  "utc": "2026-09-24T14:31:52Z",
+  "seconds": 121.3,
   "budget_seconds": 600,
-  "git": "da3d231",
-  "dirty": true,
+  "git": "3b9603c",
+  "dirty": false,
   "host": "GMNGDSKTP",
   "results": {
     "subject": "/home/lasimeri/models/Qwen3.8-35B-A3B/Qwen3.8-35B-A3B-Q4_K_M.gguf",
@@ -32,8 +32,8 @@
       "same_argmax": 12,
       "min_label_mass": 0.9441455901228232,
       "mean_label_mass": 0.9684945363094084,
-      "forked_ms": 20794.542241,
-      "control_ms": 26594.147945,
+      "forked_ms": 21597.070418,
+      "control_ms": 29756.90576,
       "forked_tokens": 1195,
       "control_tokens": 1705
     },
@@ -56,8 +56,8 @@
       "same_argmax": 3,
       "min_label_mass": 0.9600770857954194,
       "mean_label_mass": 0.9749870873243752,
-      "forked_ms": 5361.8467550000005,
-      "control_ms": 6468.940028000001,
+      "forked_ms": 5368.449737,
+      "control_ms": 6539.2999199999995,
       "forked_tokens": 299,
       "control_tokens": 427
     },
@@ -80,8 +80,8 @@
       "same_argmax": 18,
       "min_label_mass": 0.8846507506372487,
       "mean_label_mass": 0.9570643775988774,
-      "forked_ms": 2227.513152,
-      "control_ms": 3613.948507,
+      "forked_ms": 2236.0942969999996,
+      "control_ms": 3708.570294999999,
       "forked_tokens": 1802,
       "control_tokens": 2550
     }
