@@ -506,7 +506,13 @@ pub fn run(ctx: &Ctx, sp: &Subproject) -> Result<(PathBuf, bool), String> {
         "seconds": (t0.elapsed().as_secs_f64() * 10.0).round() / 10.0,
         "budget_seconds": BUDGET.as_secs(),
         "git": git(&ctx.repo, &["rev-parse", "--short", "HEAD"]),
-        "dirty": !git(&ctx.repo, &["status", "--porcelain", "--untracked-files=no"]).is_empty(),
+        // Dirty means the code differs from the revision; the records
+        // themselves are rewritten by every run and do not count.
+        "dirty": !git(
+            &ctx.repo,
+            &["status", "--porcelain", "--untracked-files=no", "--", ".", ":!docs/subprojects/results"]
+        )
+        .is_empty(),
         "host": hostname(),
         "results": results,
     });
