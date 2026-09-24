@@ -44,9 +44,12 @@ pub struct Options {
     pub backend_dir: Option<PathBuf>,
     /// Show llama.cpp's informational log, not only its warnings.
     pub verbose: bool,
-    /// Let llama.cpp repack weights for this host's CPU. Off whenever the
-    /// Phi payload is loaded: a repacked weight lives in a CPU-only buffer
-    /// the payload is never offered, so it could never reach a card.
+    /// Let llama.cpp repack weights for this host's CPU. Off by default:
+    /// a repacked copy sits beside the mapped file, which for a subject
+    /// near this host's memory (the 21.7 GB 35B on 31 GB) thrashed a run
+    /// from 44 to 1.5 tokens a second; and with the Phi payload loaded a
+    /// repacked weight lives in a CPU-only buffer the payload is never
+    /// offered, so it could never reach a card.
     pub repack: bool,
     /// Let llama.cpp use flash attention where it would (off on the avx512
     /// site: its tiled loop is one the card cannot yet run, site.md).
@@ -67,7 +70,7 @@ impl Options {
             threads: if cards { 12 } else { 16 },
             backend_dir: None,
             verbose: false,
-            repack: !cards,
+            repack: false,
             flash_attn: true,
         }
     }

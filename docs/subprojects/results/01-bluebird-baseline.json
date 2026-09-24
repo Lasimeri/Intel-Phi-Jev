@@ -1,0 +1,39 @@
+{
+  "subproject": "01",
+  "name": "bluebird-baseline",
+  "what": "BLUEBIRD: stock llama-server (x86, no repack) on the first 10 dev_tasks cases",
+  "outcome": "finished",
+  "utc": "2026-09-24T14:25:50Z",
+  "seconds": 110.6,
+  "budget_seconds": 600,
+  "git": "b32dd97",
+  "dirty": true,
+  "host": "GMNGDSKTP",
+  "results": {
+    "subject": "/home/lasimeri/models/Qwen3.8-35B-A3B/Qwen3.8-35B-A3B-Q4_K_M.gguf",
+    "site": "x86 (llama-server)",
+    "eval": {
+      "questions": 30,
+      "failed_cases": 0,
+      "accuracy": 0.8333333333333334,
+      "brier": 0.24149360438967568,
+      "ece": 0.15404220591916887,
+      "mean_confidence": 0.5036012655759562,
+      "coverage_at_5pct_error": 0.7666666666666667,
+      "latency_p50_ms": 2404.779933,
+      "latency_p95_ms": 3731.707437,
+      "prompt_tokens_evaluated": 4312,
+      "prompt_tokens_cached": 4312,
+      "by_kind": {
+        "choice": 1.0,
+        "noul": 0.9,
+        "score": 0.6
+      },
+      "subject": "bluebird/Qwen3.8-35B-A3B-Q4_K_M",
+      "site": "remote",
+      "cases": 10,
+      "wall_s": 88.95,
+      "per_case_s": 8.9
+    }
+  }
+}

@@ -5,9 +5,14 @@
 //! wants its own), starts and stops llama-server where it compares against
 //! it, and writes one JSON record to `docs/subprojects/results/`: the git
 //! revision, the time, the subject, the configuration and what was
-//! measured. The prose that reads a record is `docs/subprojects/NN-*.md`.
-//! See subproject.md.
+//! measured, or why it stopped. The prose that reads a record is
+//! `docs/subprojects/NN-*.md`.
+//!
+//! Every subproject has a budget of ten minutes, enforced: a child still
+//! running at the deadline is killed and the record says so. The workloads
+//! are sized to finish well inside it on this host. See subproject.md.
 
+use std::cell::Cell;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -15,10 +20,16 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Value};
 
+/// The most any subproject may take.
+pub const BUDGET: Duration = Duration::from_secs(600);
+
 pub struct Subproject {
     pub id: &'static str,
     pub name: &'static str,
     pub what: &'static str,
+    /// Run by `all`. A subproject that cannot finish inside the budget on
+    /// this hardware yet is run only by name.
+    pub in_all: bool,
     run: fn(&Ctx) -> Result<Value, String>,
 }
 
@@ -26,38 +37,51 @@ pub const ALL: &[Subproject] = &[
     Subproject {
         id: "01",
         name: "bluebird-baseline",
-        what: "BLUEBIRD: stock llama-server (x86) re-prefilling every question, dev_tasks",
+        what: "BLUEBIRD: stock llama-server (x86, no repack) on the first 10 dev_tasks cases",
+        in_all: true,
         run: s01_bluebird,
     },
     Subproject {
         id: "02",
         name: "polygraph",
-        what: "ARTICHOKE's fork read three ways (forked, split, control) on the 35B, the copy isolated with one fork, and the dense 0.5B as the noise floor",
+        what: "The fork read three ways (forked, split, control) on the 35B, the copy isolated with one fork, and a dense 0.5B as the noise floor",
+        in_all: true,
         run: s02_polygraph,
     },
     Subproject {
         id: "03",
         name: "dev-eval-sites",
-        what: "ARTICHOKE on dev_tasks at the x86 site and the cards site, corroborated",
+        what: "ARTICHOKE on the first 10 dev_tasks cases at the x86 site and the cards site, corroborated",
+        in_all: true,
         run: s03_dev_sites,
     },
     Subproject {
         id: "04",
-        name: "long-sessions",
-        what: "Long real sessions: BLUEBIRD against ARTICHOKE (x86), ARTICHOKE on the cards with the payload's ledger, corroborated",
-        run: s04_long,
+        name: "long-sessions-x86",
+        what: "Two long real sessions, eight questions each: BLUEBIRD against ARTICHOKE, both on this host alone",
+        in_all: true,
+        run: s04_long_x86,
     },
     Subproject {
         id: "05",
         name: "wide-choice-trie",
         what: "A 30-option Choice (multi-token labels) read as a trie of forks against brute force",
+        in_all: true,
         run: s05_trie,
     },
     Subproject {
         id: "06",
         name: "avx512-parity",
         what: "The AVX-512 build under phi512 (card 0) with the payload (card 1) against the x86 reference, dense 0.5B, one question",
+        in_all: false,
         run: s06_avx512,
+    },
+    Subproject {
+        id: "07",
+        name: "long-sessions-cards",
+        what: "All four long sessions on the x86 site and on the cards, the payload's ledger, corroborated",
+        in_all: true,
+        run: s07_long_cards,
     },
 ];
 
@@ -67,6 +91,7 @@ pub struct Ctx {
     logs: PathBuf,
     subject: String,
     small: String,
+    deadline: Cell<Instant>,
 }
 
 impl Ctx {
@@ -83,6 +108,7 @@ impl Ctx {
             logs,
             subject: var("XKS_SUBJECT")?,
             small: var("XKS_SUBJECT_SMALL")?,
+            deadline: Cell::new(Instant::now() + BUDGET),
         })
     }
 
@@ -94,34 +120,62 @@ impl Ctx {
         self.logs.join(name)
     }
 
-    /// Run `xks` with `args`; stdout is its JSON result, stderr goes to
-    /// `target/subprojects/<log>`.
+    fn left(&self) -> Duration {
+        self.deadline
+            .get()
+            .saturating_duration_since(Instant::now())
+    }
+
+    /// Run `xks` with `args` inside what is left of the budget; stdout is
+    /// its JSON result, stderr goes to `target/subprojects/<log>`.
     fn xks(&self, log: &str, args: &[&str], env: &[(&str, &str)]) -> Result<Value, String> {
         let log = self.log(log);
         let err = std::fs::File::create(&log).map_err(|e| e.to_string())?;
         eprintln!("  xks {}", args.join(" "));
         let t0 = Instant::now();
-        let out = Command::new(&self.exe)
+        let mut child = Command::new(&self.exe)
             .args(args)
             .envs(env.iter().copied())
             .stdout(Stdio::piped())
             .stderr(err)
-            .output()
+            .spawn()
             .map_err(|e| e.to_string())?;
+        let mut stdout = child.stdout.take().ok_or("no stdout")?;
+        let reader = std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let _ = stdout.read_to_end(&mut buf);
+            buf
+        });
+        let status = loop {
+            if let Some(s) = child.try_wait().map_err(|e| e.to_string())? {
+                break s;
+            }
+            if self.left().is_zero() {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!(
+                    "over budget ({} s): xks {} was stopped; see {}",
+                    BUDGET.as_secs(),
+                    args.join(" "),
+                    log.display()
+                ));
+            }
+            std::thread::sleep(Duration::from_millis(200));
+        };
+        let out = reader.join().unwrap_or_default();
         eprintln!(
             "    {:.1} s, log {}",
             t0.elapsed().as_secs_f64(),
             log.display()
         );
-        if !out.status.success() {
+        if !status.success() {
             return Err(format!(
-                "xks {} failed ({}); see {}",
+                "xks {} failed ({status}); see {}",
                 args.join(" "),
-                out.status,
                 log.display()
             ));
         }
-        serde_json::from_slice(&out.stdout)
+        serde_json::from_slice(&out)
             .map_err(|e| format!("xks {}: output is not JSON: {e}", args.join(" ")))
     }
 }
@@ -136,6 +190,9 @@ impl Drop for Bluebird {
     }
 }
 
+/// Stock llama-server on this host, repacking off: a repacked copy of a
+/// 21.7 GB subject beside its mapped file does not fit this host's memory
+/// and thrashed a run from 44 to 1.5 tokens a second (subproject.md).
 fn bluebird(ctx: &Ctx, log: &str, subject: &str) -> Result<(Bluebird, String), String> {
     let server =
         std::env::var("XKS_LLAMA_SERVER").map_err(|_| "XKS_LLAMA_SERVER is not set (xks.conf)")?;
@@ -146,23 +203,22 @@ fn bluebird(ctx: &Ctx, log: &str, subject: &str) -> Result<(Bluebird, String), S
     eprintln!("  llama-server {subject} on {url}");
     let child = Command::new(&server)
         .args(["-m", subject, "--host", "127.0.0.1", "--port", &port])
-        .args(["-t", "16", "-np", "1", "-c", "16384"])
+        .args(["-t", "16", "-np", "1", "-c", "16384", "--no-repack"])
         .stdout(Stdio::null())
         .stderr(err)
         .spawn()
         .map_err(|e| format!("{server}: {e}"))?;
     let bb = Bluebird(child);
-    let t0 = Instant::now();
-    while t0.elapsed() < Duration::from_secs(900) {
+    while !ctx.left().is_zero() {
         if let Ok(r) = ureq::get(&format!("{url}/health")).call() {
             if r.status() == 200 {
                 return Ok((bb, url));
             }
         }
-        std::thread::sleep(Duration::from_secs(2));
+        std::thread::sleep(Duration::from_secs(1));
     }
     Err(format!(
-        "llama-server did not come up; see {}",
+        "llama-server did not come up inside the budget; see {}",
         log.display()
     ))
 }
@@ -174,6 +230,7 @@ fn rows(ctx: &Ctx, name: &str) -> String {
 fn s01_bluebird(ctx: &Ctx) -> Result<Value, String> {
     let (_bb, url) = bluebird(ctx, "01-llama-server.log", &ctx.subject)?;
     let r = rows(ctx, "01-bluebird-rows.jsonl");
+    let dev = ctx.example("dev_tasks.jsonl");
     let eval = ctx.xks(
         "01-bluebird.log",
         &[
@@ -182,7 +239,9 @@ fn s01_bluebird(ctx: &Ctx) -> Result<Value, String> {
             "--backend",
             &url,
             "eval",
-            &ctx.example("dev_tasks.jsonl"),
+            &dev,
+            "--limit",
+            "10",
             "--rows",
             &r,
         ],
@@ -195,7 +254,7 @@ fn s02_polygraph(ctx: &Ctx) -> Result<Value, String> {
     let dev = ctx.example("dev_tasks.jsonl");
     let batched = ctx.xks(
         "02-batched.log",
-        &["--site", "x86", "polygraph", &dev, "--limit", "6"],
+        &["--site", "x86", "polygraph", &dev, "--limit", "4"],
         &[],
     )?;
     let one = ctx.xks(
@@ -208,7 +267,7 @@ fn s02_polygraph(ctx: &Ctx) -> Result<Value, String> {
             "polygraph",
             &dev,
             "--limit",
-            "2",
+            "1",
         ],
         &[],
     )?;
@@ -240,19 +299,21 @@ fn s03_dev_sites(ctx: &Ctx) -> Result<Value, String> {
     );
     let x86 = ctx.xks(
         "03-x86.log",
-        &["--site", "x86", "eval", &dev, "--rows", &a],
+        &["--site", "x86", "eval", &dev, "--limit", "10", "--rows", &a],
         &[],
     )?;
     let cards = ctx.xks(
         "03-cards.log",
-        &["--site", "cards", "eval", &dev, "--rows", &b],
+        &[
+            "--site", "cards", "eval", &dev, "--limit", "10", "--rows", &b,
+        ],
         &[],
     )?;
     let cor = ctx.xks("03-corroborate.log", &["corroborate", &a, &b], &[])?;
     Ok(json!({"subject": ctx.subject, "x86": x86, "cards": cards, "corroborate": cor}))
 }
 
-fn s04_long(ctx: &Ctx) -> Result<Value, String> {
+fn s04_long_x86(ctx: &Ctx) -> Result<Value, String> {
     let long = ctx.example("long_sessions.jsonl");
     let bb_rows = rows(ctx, "04-bluebird-rows.jsonl");
     let bb = {
@@ -266,35 +327,24 @@ fn s04_long(ctx: &Ctx) -> Result<Value, String> {
                 &url,
                 "eval",
                 &long,
+                "--limit",
+                "2",
                 "--rows",
                 &bb_rows,
             ],
             &[],
         )?
     };
-    let (a, b) = (
-        rows(ctx, "04-x86-rows.jsonl"),
-        rows(ctx, "04-cards-rows.jsonl"),
-    );
+    let a = rows(ctx, "04-x86-rows.jsonl");
     let x86 = ctx.xks(
         "04-x86.log",
-        &["--site", "x86", "eval", &long, "--rows", &a],
+        &["--site", "x86", "eval", &long, "--limit", "2", "--rows", &a],
         &[],
     )?;
-    let cards = ctx.xks(
-        "04-cards.log",
-        &["--site", "cards", "eval", &long, "--rows", &b],
-        &[("PHI_GGML_VERBOSE", "1")],
-    )?;
-    let ledger = ctx.xks(
-        "04-ledger.log",
-        &["ledger", &ctx.log("04-cards.log").display().to_string()],
-        &[],
-    )?;
-    let cor = ctx.xks("04-corroborate.log", &["corroborate", &a, &b], &[])?;
+    let cor = ctx.xks("04-corroborate.log", &["corroborate", &bb_rows, &a], &[])?;
     Ok(
         json!({"subject": ctx.subject, "bluebird": bb, "artichoke_x86": x86,
-        "artichoke_cards": cards, "ledger": ledger, "corroborate_x86_cards": cor}),
+        "corroborate_bluebird_artichoke": cor}),
     )
 }
 
@@ -342,9 +392,8 @@ fn s06_avx512(ctx: &Ctx) -> Result<Value, String> {
         ],
         &[],
     );
-    // A refusal by phi512 (an instruction the card cannot run yet, or a
-    // phase touching unmapped memory) is a result too: the record keeps
-    // what phi512 said, so the next run shows whether it moved.
+    // A refusal by phi512 or the budget running out is a result too: the
+    // record keeps what phi512 said, so the next run shows whether it moved.
     match avx {
         Ok(avx) => {
             let cor = ctx.xks("06-corroborate.log", &["corroborate", &a, &b], &[])?;
@@ -354,9 +403,37 @@ fn s06_avx512(ctx: &Ctx) -> Result<Value, String> {
             let log = std::fs::read_to_string(ctx.log("06-avx512.log")).unwrap_or_default();
             let said: Vec<&str> = log.lines().filter(|l| l.starts_with("phi512:")).collect();
             Ok(json!({"subject": ctx.small, "x86": x86,
-                "avx512": {"outcome": "refused", "error": e, "phi512": said}}))
+                "avx512": {"outcome": "did not finish", "error": e, "phi512": said}}))
         }
     }
+}
+
+fn s07_long_cards(ctx: &Ctx) -> Result<Value, String> {
+    let long = ctx.example("long_sessions.jsonl");
+    let (a, b) = (
+        rows(ctx, "07-x86-rows.jsonl"),
+        rows(ctx, "07-cards-rows.jsonl"),
+    );
+    let x86 = ctx.xks(
+        "07-x86.log",
+        &["--site", "x86", "eval", &long, "--rows", &a],
+        &[],
+    )?;
+    let cards = ctx.xks(
+        "07-cards.log",
+        &["--site", "cards", "eval", &long, "--rows", &b],
+        &[("PHI_GGML_VERBOSE", "1")],
+    )?;
+    let ledger = ctx.xks(
+        "07-ledger.log",
+        &["ledger", &ctx.log("07-cards.log").display().to_string()],
+        &[],
+    )?;
+    let cor = ctx.xks("07-corroborate.log", &["corroborate", &a, &b], &[])?;
+    Ok(
+        json!({"subject": ctx.subject, "artichoke_x86": x86, "artichoke_cards": cards,
+        "ledger": ledger, "corroborate_x86_cards": cor}),
+    )
 }
 
 /// `YYYY-MM-DDTHH:MM:SSZ` for a UNIX time (civil-from-days, no calendar crate).
@@ -397,21 +474,37 @@ fn hostname() -> String {
     s.trim().to_string()
 }
 
-/// Run one subproject and write its record.
-pub fn run(ctx: &Ctx, sp: &Subproject) -> Result<PathBuf, String> {
-    eprintln!("subproject {} {}: {}", sp.id, sp.name, sp.what);
+/// Run one subproject inside its budget and write its record, whether it
+/// finished or not. Returns the record's path and whether it finished.
+pub fn run(ctx: &Ctx, sp: &Subproject) -> Result<(PathBuf, bool), String> {
+    eprintln!(
+        "subproject {} {} (budget {} s): {}",
+        sp.id,
+        sp.name,
+        BUDGET.as_secs(),
+        sp.what
+    );
     let t0 = Instant::now();
+    ctx.deadline.set(t0 + BUDGET);
     let started = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    let results = (sp.run)(ctx)?;
+    let (outcome, results) = match (sp.run)(ctx) {
+        Ok(v) => ("finished", v),
+        Err(e) => {
+            eprintln!("subproject {}: {e}", sp.id);
+            ("failed", json!({"error": e}))
+        }
+    };
     let record = json!({
         "subproject": sp.id,
         "name": sp.name,
         "what": sp.what,
+        "outcome": outcome,
         "utc": utc(started),
         "seconds": (t0.elapsed().as_secs_f64() * 10.0).round() / 10.0,
+        "budget_seconds": BUDGET.as_secs(),
         "git": git(&ctx.repo, &["rev-parse", "--short", "HEAD"]),
         "dirty": !git(&ctx.repo, &["status", "--porcelain", "--untracked-files=no"]).is_empty(),
         "host": hostname(),
@@ -423,17 +516,17 @@ pub fn run(ctx: &Ctx, sp: &Subproject) -> Result<PathBuf, String> {
     std::fs::write(&path, serde_json::to_string_pretty(&record).unwrap() + "\n")
         .map_err(|e| e.to_string())?;
     eprintln!(
-        "subproject {} done in {:.0} s: {}",
+        "subproject {} {outcome} in {:.0} s: {}",
         sp.id,
         t0.elapsed().as_secs_f64(),
         path.display()
     );
-    Ok(path)
+    Ok((path, outcome == "finished"))
 }
 
 pub fn find(which: &str) -> Vec<&'static Subproject> {
     if which == "all" {
-        return ALL.iter().collect();
+        return ALL.iter().filter(|s| s.in_all).collect();
     }
     ALL.iter()
         .filter(|s| s.id == which || s.name == which || format!("{}-{}", s.id, s.name) == which)

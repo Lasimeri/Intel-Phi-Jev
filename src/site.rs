@@ -206,7 +206,7 @@ pub fn prepare(site: Site, offload: bool) -> Result<Placed, String> {
             site,
             cards: Vec::new(),
             threads: 16,
-            repack: true,
+            repack: false,
             flash_attn: true,
         }),
         Site::Cards => {

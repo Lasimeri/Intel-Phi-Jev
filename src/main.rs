@@ -333,8 +333,12 @@ fn subproject(action: &str, which: Option<&str>) -> Result<(), String> {
     use xks::subproject::{find, run, Ctx, ALL};
     match action {
         "list" => {
+            eprintln!(
+                "(* = run only by name, not by `all`: it cannot finish inside the budget yet)"
+            );
             for s in ALL {
-                println!("{}  {:<18} {}", s.id, s.name, s.what);
+                let mark = if s.in_all { " " } else { "*" };
+                println!("{}{mark} {:<20} {}", s.id, s.name, s.what);
             }
             Ok(())
         }
@@ -345,11 +349,21 @@ fn subproject(action: &str, which: Option<&str>) -> Result<(), String> {
                 return Err(format!("no subproject `{which}` (xks subproject list)"));
             }
             let ctx = Ctx::new()?;
+            let mut failed = Vec::new();
             for s in chosen {
-                let path = run(&ctx, s)?;
+                let (path, finished) = run(&ctx, s)?;
                 println!("{}", path.display());
+                if !finished {
+                    failed.push(s.id);
+                }
             }
-            Ok(())
+            if failed.is_empty() {
+                Ok(())
+            } else {
+                Err(format!(
+                    "subprojects {failed:?} did not finish (their records say why)"
+                ))
+            }
         }
         other => Err(format!("unknown action `{other}` (list|run)")),
     }
