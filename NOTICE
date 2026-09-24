@@ -1,0 +1,11 @@
+Intel Phi Jev
+Copyright 2026 Lasimeri
+
+This repository began as an import of jev-rs by Yijun Yu and contributors
+(https://github.com/yijunyu/jev-rs), commit recorded in UPSTREAM, used under
+the MIT license or the Apache License 2.0 (LICENSE-MIT, LICENSE-APACHE).
+The upstream README is kept at docs/upstream/README.md. The import changed
+only one thing before the first commit: em and en dashes were replaced with
+"--" and "-" to satisfy this repository's no-dash rule.
+
+This work is offered under the same two licenses, at your option.
