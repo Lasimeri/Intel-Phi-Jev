@@ -77,7 +77,9 @@ arguments given, and `arg_required_else_help` never fired.
 `query` with no engine option on its command line (`ENGINE_ARGS`: the
 subject, site, context, layout, template, conditioning, `--debug` and the
 rest of the global options that shape the engine) first asks
-`http://$XKS_BIND/health`. When an xks server answers, the request goes to
+`http://$XKS_BIND/health`, then the address the server holding the cards
+wrote into the lock ([`site.md`](site.md); Mechanical Jev may have started
+it on another port). When an xks server answers, the request goes to
 it: the subject is already loaded there (and on the cards site, the
 cards are its), where a second in-process load would take minutes and,
 on the cards, collide with it ([`site.md`](site.md), the lock). One stderr
@@ -88,8 +90,9 @@ becomes `error: the server answered N: MESSAGE`. The first of
 the command line (a value from the environment or `xks.conf` does not
 count: they set most of them) keeps the query in this process, as does
 `--backend-kind jev`, which asks the hosted Jev. Nothing else in the
-family runs `xks query` (the subprojects run `eval` with `--site`,
-Mechanical Jev speaks HTTP), so no consumer changes behaviour.
+family runs `xks query` (grepped 2026-09-25 across Mechanical-Jev and
+Intel-Phi-AVX512: the subprojects run `eval` with `--site`, `mjev query`
+is its own HTTP client), so no consumer changes behaviour.
 
 Measured 2026-09-25, the 0.5B served on the cards at 127.0.0.1:8095:
 `XKS_BIND=127.0.0.1:8095 xks query --file examples/query.json` answered

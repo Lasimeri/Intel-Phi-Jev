@@ -69,6 +69,17 @@ workers of a holder that is not its server running. Only `xks` takes this
 lock: the sibling's own tools (`phi-ggml.sh`, `phi512.sh` run by hand) do
 not, and are not policed here.
 
+A server holding the lock adds `serves http://BIND` to it once its engine
+is up (`note_serving`). A refused process then names that address, and
+a plain `xks query` finds the server there when nothing answers at
+`XKS_BIND` (`cards_server`): Mechanical Jev starts one on the address of
+its `TYPESAFE_BASE_URL`, which need not be `xks.conf`'s. Measured
+2026-09-25: the TUI started the 0.5B on the cards at 127.0.0.1:8095;
+with `XKS_BIND` at 8090, `xks query --file examples/query.json` was
+answered by it in 6.3 s, `eval`, `subproject run 03` (2 ms) and `release`
+were refused naming it, and the TUI's `x` left both cards with no worker
+and 0 huge pages.
+
 Measured 2026-09-25 with the 0.5B on port 8095 (`xks --site cards serve
 --detach`, then `xks --site cards eval ... --limit 1`, `xks query --local
 ...`, `xks release`): all three refused, naming the server's pid, the

@@ -225,10 +225,13 @@ fn take(path: &Path) -> Result<std::fs::File, String> {
         }
         Err(std::fs::TryLockError::WouldBlock) => {
             let who = holder(path).unwrap_or_else(|| "another process".into());
+            let ask = match serving(path) {
+                Some(url) => format!("ask that server at {url} (a plain `xks query` does)"),
+                None => "wait for it".into(),
+            };
             Err(format!(
-                "the cards are in use by {who}; one process at a time may hold them. \
-                 Ask that server (a plain `xks query` goes to it), or stop it first \
-                 (`xks stop` for a detached one)"
+                "the cards are in use by {who}; one process at a time may hold them: \
+                 {ask}, or stop it first (`xks stop` for a detached server)"
             ))
         }
         Err(std::fs::TryLockError::Error(e)) => Err(format!("{}: {e}", path.display())),
@@ -244,7 +247,7 @@ fn holder(path: &Path) -> Option<String> {
         return None;
     }
     let named = std::fs::read_to_string(path).ok().and_then(|t| {
-        let (pid, cmd) = t.trim().split_once(' ')?;
+        let (pid, cmd) = t.lines().next()?.trim().split_once(' ')?;
         let pid: u32 = pid.parse().ok()?;
         Path::new(&format!("/proc/{pid}"))
             .exists()
@@ -256,10 +259,37 @@ fn holder(path: &Path) -> Option<String> {
     )
 }
 
+/// The URL the holder of the lock at `path` serves on, when it is held by
+/// a server that said so (`note_serving`).
+fn serving(path: &Path) -> Option<String> {
+    holder(path)?;
+    let text = std::fs::read_to_string(path).ok()?;
+    text.lines()
+        .find_map(|l| l.strip_prefix("serves "))
+        .map(|u| u.trim().to_string())
+}
+
 /// Who holds the cards, when a process does (`release` and `stop` leave
 /// its workers alone).
 pub fn cards_holder() -> Option<String> {
     holder(&lock_path())
+}
+
+/// Where the server holding the cards answers, when one does: a plain
+/// `xks query` looks there after `XKS_BIND` (Mechanical Jev can start a
+/// server on another address).
+pub fn cards_server() -> Option<String> {
+    serving(&lock_path())
+}
+
+/// Write the address this process serves on into the lock it holds, for
+/// the refusal message and `cards_server`. Nothing when it holds none
+/// (the x86 site).
+pub fn note_serving(bind: &str) {
+    use std::io::Write;
+    if let Some(mut f) = HOLD.get() {
+        let _ = write!(f, "\nserves http://{bind}\n");
+    }
 }
 
 /// The sibling's worker script. Its stdout goes to our stderr: `xks`'s own
@@ -570,8 +600,20 @@ mod tests {
             who.starts_with(&format!("pid {} (`xks", std::process::id())),
             "{who}"
         );
+        assert_eq!(serving(&path), None);
+        // A server says where it answers, as note_serving writes it.
+        {
+            use std::io::Write;
+            write!(&held, "\nserves http://127.0.0.1:8095\n").unwrap();
+        }
+        assert_eq!(serving(&path).as_deref(), Some("http://127.0.0.1:8095"));
+        let err = take(&path).unwrap_err();
+        assert!(err.contains("at http://127.0.0.1:8095"), "{err}");
+        assert!(holder(&path).unwrap().ends_with("`)"), "one line only");
         drop(held);
         assert_eq!(holder(&path), None);
+        // The line outlives its writer in the file; a free lock has no server.
+        assert_eq!(serving(&path), None);
         // Held by something that wrote nothing (flock(1), say, or a
         // holder between its lock and its write): still held, unnamed.
         let other = open_lock(&path).unwrap();

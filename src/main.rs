@@ -503,6 +503,15 @@ fn subproject(action: &str, which: Option<&str>) -> Result<(), String> {
             if chosen.is_empty() {
                 return Err(format!("no subproject `{which}` (xks subproject list)"));
             }
+            // Before the first one starts: 03 and 07 would otherwise run
+            // their x86 half for minutes and then be refused the cards.
+            let need: Vec<&str> = chosen.iter().filter(|s| s.cards).map(|s| s.id).collect();
+            if let (false, Some(who)) = (need.is_empty(), xks::site::cards_holder()) {
+                return Err(format!(
+                    "subprojects {need:?} need the cards, which {who} holds; \
+                     stop it first (`xks stop` for a detached server)"
+                ));
+            }
             let ctx = Ctx::new()?;
             let mut failed = Vec::new();
             for s in chosen {
@@ -752,6 +761,9 @@ fn run() -> Result<(), String> {
                 .filter(|s| !s.is_empty())
                 .map(String::from)
                 .collect();
+            // Holding the cards: say where to ask instead (site.md).
+            #[cfg(feature = "artichoke")]
+            xks::site::note_serving(&bind);
             serve(
                 judge,
                 ServerConfig {
@@ -888,20 +900,27 @@ fn engine_on_command_line(m: &clap::ArgMatches) -> bool {
         .any(|id| m.value_source(id) == Some(clap::parser::ValueSource::CommandLine))
 }
 
-/// The server answering at `XKS_BIND`, if one does: its URL and subject.
+/// The server answering at `XKS_BIND`, else the one holding the cards
+/// (it wrote its address into the lock; Mechanical Jev may have started
+/// it elsewhere), if one does: its URL and subject.
 fn running_server() -> Option<(String, String)> {
     let bind = std::env::var("XKS_BIND").unwrap_or_else(|_| "127.0.0.1:8090".into());
-    let url = format!("http://{bind}");
-    let health: Value = ureq::AgentBuilder::new()
-        .timeout(Duration::from_secs(2))
-        .build()
-        .get(&format!("{url}/health"))
-        .call()
-        .ok()?
-        .into_json()
-        .ok()?;
-    let subject = health.get("subject")?.as_str()?.to_string();
-    Some((url, subject))
+    let first = format!("http://{bind}");
+    let mut urls = vec![first.clone()];
+    #[cfg(feature = "artichoke")]
+    urls.extend(xks::site::cards_server().filter(|u| *u != first));
+    urls.into_iter().find_map(|url| {
+        let health: Value = ureq::AgentBuilder::new()
+            .timeout(Duration::from_secs(2))
+            .build()
+            .get(&format!("{url}/health"))
+            .call()
+            .ok()?
+            .into_json()
+            .ok()?;
+        let subject = health.get("subject")?.as_str()?.to_string();
+        Some((url, subject))
+    })
 }
 
 /// `query` through the running server: the same request, the answer

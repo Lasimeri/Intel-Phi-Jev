@@ -33,6 +33,9 @@ pub struct Subproject {
     /// Run by `all`. A subproject that cannot finish inside the budget on
     /// this hardware yet is run only by name.
     pub in_all: bool,
+    /// Needs the cards (the cards or avx512 site): refused at once, before
+    /// its x86 half runs, while another process holds them.
+    pub cards: bool,
     run: fn(&Ctx) -> Result<Value, String>,
 }
 
@@ -42,6 +45,7 @@ pub const ALL: &[Subproject] = &[
         name: "bluebird-baseline",
         what: "BLUEBIRD: stock llama-server (x86, no repack) on the first 10 dev_tasks cases",
         in_all: true,
+        cards: false,
         run: s01_bluebird,
     },
     Subproject {
@@ -49,6 +53,7 @@ pub const ALL: &[Subproject] = &[
         name: "polygraph",
         what: "The fork read three ways (forked, split, control) on the 35B, the copy isolated with one fork, and a dense 0.5B as the noise floor",
         in_all: true,
+        cards: false,
         run: s02_polygraph,
     },
     Subproject {
@@ -56,6 +61,7 @@ pub const ALL: &[Subproject] = &[
         name: "dev-eval-sites",
         what: "ARTICHOKE on the first 10 dev_tasks cases at the x86 site and the cards site, corroborated",
         in_all: true,
+        cards: true,
         run: s03_dev_sites,
     },
     Subproject {
@@ -63,6 +69,7 @@ pub const ALL: &[Subproject] = &[
         name: "long-sessions-x86",
         what: "Two long real sessions, eight questions each: BLUEBIRD against ARTICHOKE, both on this host alone",
         in_all: true,
+        cards: false,
         run: s04_long_x86,
     },
     Subproject {
@@ -70,6 +77,7 @@ pub const ALL: &[Subproject] = &[
         name: "wide-choice-trie",
         what: "A 30-option Choice (multi-token labels) read as a trie of forks against brute force",
         in_all: true,
+        cards: false,
         run: s05_trie,
     },
     Subproject {
@@ -77,6 +85,7 @@ pub const ALL: &[Subproject] = &[
         name: "avx512-parity",
         what: "The AVX-512 build under phi512 (card 0) with the payload (card 1) against the x86 reference, dense 0.5B, one question",
         in_all: false,
+        cards: true,
         run: s06_avx512,
     },
     Subproject {
@@ -84,6 +93,7 @@ pub const ALL: &[Subproject] = &[
         name: "long-sessions-cards",
         what: "All four long sessions on the x86 site and on the cards, the payload's ledger, corroborated",
         in_all: true,
+        cards: true,
         run: s07_long_cards,
     },
 ];

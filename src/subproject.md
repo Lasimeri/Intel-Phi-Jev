@@ -30,6 +30,11 @@ Each subproject has `BUDGET`, 600 s: its children share one deadline, and
 a child still running at it is killed and the record says "over budget"
 with the log to read. `run all` skips a subproject whose `in_all` is false.
 
+A subproject marked `cards` (03, 06, 07) needs the cards; `run` refuses
+at once, before the first subproject starts, while another process holds
+them ([`site.md`](site.md), the lock): 03 and 07 would otherwise run their
+x86 half for minutes and then be refused.
+
 A subproject's timings are one run each. This host's throughput drifts by up
 to a quarter over tens of minutes, so a timing claim closer than that needs
 interleaved runs; the subprojects state accuracy and token counts, which do
