@@ -69,13 +69,16 @@ modified. The `x86` site is left as it was.
 Measured 2026-09-25, the 35B-A3B Q4_K_M at the cards site on 8095, xks's
 resident memory from `/proc/PID/status`, `examples/query.json` three
 times (the steady figure depends on how much of the model the requests
-reach: another request can route to experts these three did not):
+reach: another request can route to experts these three did not; the
+ceiling is about the host's share of the weights, 59 percent of 20.9 GB,
+plus 1.4 GiB of its own):
 
 | | populated (before) | read in as used |
 | --- | --- | --- |
 | right after the load, a server nobody has asked yet | 21.3 GiB (20.2 of it the file) | 1.42 GiB (11 MB of the file) |
 | the first request | 21 s | 30.7 s (the pages fault in as used) |
 | after three requests | 14.1 GiB, peak 21.6 | 11.2 GiB, peak 11.2 |
+| then two long sessions (`examples/long_sessions.jsonl` 1, 2) | (14.1: every page was in) | 12.9, then 13.1 GiB, peak the same |
 
 On the avx512 site (the 0.5B, the inner xks under phi512 with libphi512
 preloaded) the load left 13 MB of the file resident. A test maps a

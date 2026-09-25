@@ -42,3 +42,10 @@ not drift, and timings only where the gap is several times the drift.
 
 `utc` formats a UNIX time with the civil-from-days algorithm rather than a
 calendar crate.
+
+From e2be26e (2026-09-25) the offloaded sites read the subject's pages in
+as they are used instead of at load ([`artichoke/mod.md`](artichoke/mod.md),
+"Pages read in as used"): the first request of a cards-site run takes
+about 10 s longer (30.7 against 21 s for `examples/query.json` on the
+35B), so a cards-site wall time recorded from then on includes that where
+an earlier one did not.
