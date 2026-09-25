@@ -49,7 +49,9 @@ what differs is said where it applies.
 - A dependency is found in that order, as a checkout under its GitHub
   clone's name (`Intel-Phi-AVX512`) or the spaced one (`Intel Phi AVX-512`)
   ([`src/site.md`](src/site.md)). Nothing of a sibling is copied into
-  another.
+  another (the one exception is between Intel-Phi-3120A and
+  Intel-Phi-AVX512: the `knc-mvex` library, kept identical by the latter's
+  `make check`).
 - The interfaces Mechanical-Jev consumes keep working across changes:
   `xks serve --detach --bind`, `xks stop`, `target/release/xks`, `/health`,
   `/v1/models` and the System One wire format. Add, do not rename; when
