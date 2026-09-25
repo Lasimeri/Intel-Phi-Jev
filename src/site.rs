@@ -174,6 +174,94 @@ fn marker(card: u32) -> PathBuf {
     base.join("xks").join(format!("worker-{card}"))
 }
 
+/// The lock that gives the cards to one `xks` process at a time: the
+/// payload frees every card's uploads when it opens and a worker restart
+/// kills the one running, so a second process (an `eval` beside a
+/// server) would break the first without a word. `flock`, so the lock
+/// goes when its holder does, crash or not.
+pub fn lock_path() -> PathBuf {
+    std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
+        .join("xks")
+        .join("cards.lock")
+}
+
+/// Held for the life of the process once taken.
+static HOLD: std::sync::OnceLock<std::fs::File> = std::sync::OnceLock::new();
+
+/// Take the cards for this process, or say which process has them.
+pub fn take_cards() -> Result<(), String> {
+    if HOLD.get().is_none() {
+        let f = take(&lock_path())?;
+        let _ = HOLD.set(f);
+    }
+    Ok(())
+}
+
+fn open_lock(path: &Path) -> Result<std::fs::File, String> {
+    if let Some(d) = path.parent() {
+        std::fs::create_dir_all(d).map_err(|e| format!("{}: {e}", d.display()))?;
+    }
+    std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(path)
+        .map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// The lock at `path`, taken, with this process written into it.
+fn take(path: &Path) -> Result<std::fs::File, String> {
+    use std::io::Write;
+    let mut f = open_lock(path)?;
+    match f.try_lock() {
+        Ok(()) => {
+            let cmd: Vec<String> = std::env::args().skip(1).collect();
+            let _ = f.set_len(0);
+            let _ = write!(f, "{} xks {}", std::process::id(), cmd.join(" "));
+            Ok(f)
+        }
+        Err(std::fs::TryLockError::WouldBlock) => {
+            let who = holder(path).unwrap_or_else(|| "another process".into());
+            Err(format!(
+                "the cards are in use by {who}; one process at a time may hold them. \
+                 Ask that server (a plain `xks query` goes to it), or stop it first \
+                 (`xks stop` for a detached one)"
+            ))
+        }
+        Err(std::fs::TryLockError::Error(e)) => Err(format!("{}: {e}", path.display())),
+    }
+}
+
+/// Who holds the lock at `path`, when something does: `pid N (command)`
+/// as the holder wrote it while that pid is alive, else a pointer to the
+/// tool that names it. Held is held: unreadable contents still say so.
+fn holder(path: &Path) -> Option<String> {
+    let f = open_lock(path).ok()?;
+    if f.try_lock().is_ok() {
+        return None;
+    }
+    let named = std::fs::read_to_string(path).ok().and_then(|t| {
+        let (pid, cmd) = t.trim().split_once(' ')?;
+        let pid: u32 = pid.parse().ok()?;
+        Path::new(&format!("/proc/{pid}"))
+            .exists()
+            .then(|| format!("pid {pid} (`{cmd}`)"))
+    });
+    Some(
+        named
+            .unwrap_or_else(|| format!("another process (`fuser -v {}` names it)", path.display())),
+    )
+}
+
+/// Who holds the cards, when a process does (`release` and `stop` leave
+/// its workers alone).
+pub fn cards_holder() -> Option<String> {
+    holder(&lock_path())
+}
+
 /// The sibling's worker script. Its stdout goes to our stderr: `xks`'s own
 /// stdout carries only its result (a subproject parses it as JSON, and a
 /// "worker started" line in it broke subproject 03).
@@ -318,6 +406,8 @@ pub fn prepare(site: Site, offload: bool) -> Result<Placed, String> {
             if cards.is_empty() {
                 return Err("no card is up (no /dev/shm/phi-hostmem*); phi status".into());
             }
+            // Before any worker is touched: a restart kills the holder's.
+            take_cards()?;
             let lib = payload(&root)?;
             let cfg = WorkerConfig {
                 hugepages: 2400,
@@ -347,6 +437,9 @@ pub fn prepare(site: Site, offload: bool) -> Result<Placed, String> {
             if !cards.contains(&0) {
                 return Err("phi512 runs on card 0, which is not up; phi status".into());
             }
+            // Taken here, in the process under phi512, not in the outer
+            // one: the outer is replaced by exec before it could use it.
+            take_cards()?;
             ensure_worker(
                 &root,
                 0,
@@ -456,6 +549,38 @@ mod tests {
         // And one that is listening does.
         let _live = std::os::unix::net::UnixListener::bind(dir.join("live.sock")).unwrap();
         assert!(std::os::unix::net::UnixStream::connect(dir.join("live.sock")).is_ok());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn the_cards_lock_is_one_holder_at_a_time_and_names_it() {
+        let dir = std::env::temp_dir().join(format!("xks-lock-{}", std::process::id()));
+        let path = dir.join("cards.lock");
+        assert_eq!(holder(&path), None);
+        let held = take(&path).unwrap();
+        // A second open file description conflicts under flock, as a
+        // second process would.
+        let err = take(&path).unwrap_err();
+        assert!(
+            err.contains(&format!("pid {}", std::process::id())),
+            "{err}"
+        );
+        let who = holder(&path).unwrap();
+        assert!(
+            who.starts_with(&format!("pid {} (`xks", std::process::id())),
+            "{who}"
+        );
+        drop(held);
+        assert_eq!(holder(&path), None);
+        // Held by something that wrote nothing (flock(1), say, or a
+        // holder between its lock and its write): still held, unnamed.
+        let other = open_lock(&path).unwrap();
+        other.set_len(0).unwrap();
+        other.try_lock().unwrap();
+        let who = holder(&path).unwrap();
+        assert!(who.starts_with("another process"), "{who}");
+        drop(other);
+        drop(take(&path).unwrap());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

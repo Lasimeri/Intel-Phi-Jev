@@ -28,7 +28,7 @@ serve: build-x86 ## Start the server in the background (site and subject from xk
 stop: ## Stop the server and release the cards' huge pages
 	$(XKS) stop
 
-query: build-x86 ## One example query (examples/query.json)
+query: build-x86 ## One example query (examples/query.json; a running server answers it)
 	$(XKS) query --file examples/query.json
 
 jev: build-x86 ## The same query to the real Jev (TypeSafe hosted; TYPESAFE_API_KEY in xks.local.conf)

@@ -21,12 +21,51 @@ pub struct ServerConfig {
     pub api_keys: Vec<String>,
     /// Exit after this long with no request in flight or arriving.
     pub kill_date: Option<Duration>,
+    /// Where the subject runs (`x86`, `cards`, `avx512`, `remote`), for
+    /// `/health` and the index.
+    pub site: String,
+    /// The cards the subject uses, for `/health`.
+    pub cards: Vec<u32>,
+}
+
+/// What a request asks for, from its method and path alone.
+#[derive(Debug, PartialEq)]
+enum Route {
+    Index,
+    Health,
+    Models,
+    SystemOne,
+    /// A known path asked with the wrong method: the one it takes.
+    Method(&'static str),
+    NotFound,
+}
+
+/// A trailing slash is the same path; a known path with another method
+/// is a 405 naming the right one, not a 404.
+fn route(method: &Method, path: &str) -> Route {
+    let path = match path.trim_end_matches('/') {
+        "" => "/",
+        p => p,
+    };
+    let (want, r) = match path {
+        "/" => ("GET", Route::Index),
+        "/health" => ("GET", Route::Health),
+        "/v1/models" => ("GET", Route::Models),
+        "/v1/systemone" => ("POST", Route::SystemOne),
+        _ => return Route::NotFound,
+    };
+    if method.as_str() == want {
+        r
+    } else {
+        Route::Method(want)
+    }
 }
 
 pub fn serve<S: Scorer + 'static>(judge: Judge<S>, cfg: ServerConfig) -> Result<(), String> {
     let server = Server::http(&cfg.bind).map_err(|e| format!("bind {}: {e}", cfg.bind))?;
     let judge = Arc::new(judge);
-    let keys = Arc::new(cfg.api_keys);
+    let keys = Arc::new(cfg.api_keys.clone());
+    let about = Arc::new((cfg.site.clone(), cfg.cards.clone()));
     let busy = Arc::new(AtomicUsize::new(0));
     let last = Arc::new(Mutex::new(Instant::now()));
     eprintln!(
@@ -58,39 +97,69 @@ pub fn serve<S: Scorer + 'static>(judge: Judge<S>, cfg: ServerConfig) -> Result<
         };
         let judge = judge.clone();
         let keys = keys.clone();
+        let about = about.clone();
         let busy = busy.clone();
         let last = last.clone();
         busy.fetch_add(1, Ordering::SeqCst);
         std::thread::spawn(move || {
-            handle(req, &judge, &keys);
+            handle(req, &judge, &keys, &about);
             *last.lock().expect("last") = Instant::now();
             busy.fetch_sub(1, Ordering::SeqCst);
         });
     }
 }
 
-fn handle<S: Scorer>(mut req: HttpRequest, judge: &Judge<S>, keys: &[String]) {
+fn handle<S: Scorer>(
+    mut req: HttpRequest,
+    judge: &Judge<S>,
+    keys: &[String],
+    about: &(String, Vec<u32>),
+) {
     let path = req.url().split('?').next().unwrap_or("").to_string();
     let method = req.method().clone();
-    let result: (u16, Value) = match (&method, path.as_str()) {
-        (Method::Get, "/health") => (
+    let subject = judge.scorer.model_name();
+    let mut allow = None;
+    let result: (u16, Value) = match route(&method, &path) {
+        Route::Index => (
             200,
-            json!({"status": "ok", "subject": judge.scorer.model_name()}),
+            json!({
+                "service": "xks, a local Jev (TypeSafe System One)",
+                "subject": subject,
+                "site": about.0,
+                "routes": {
+                    "POST /v1/systemone": "a request: {\"state\": ..., \"questions\": {...}}",
+                    "GET /health": "the subject and where it runs",
+                    "GET /v1/models": "the model ids this server answers to",
+                },
+                "docs": "https://github.com/Lasimeri/Intel-Phi-Jev",
+            }),
         ),
-        (Method::Get, "/v1/models") => (
+        Route::Health => (
+            200,
+            json!({"status": "ok", "subject": subject, "site": about.0, "cards": about.1}),
+        ),
+        Route::Models => (
             200,
             json!({"object": "list", "data": [
-                {"id": judge.scorer.model_name(), "object": "model", "owned_by": "xks"},
-                {"id": "jev-latest", "object": "model", "owned_by": "xks", "alias_of": judge.scorer.model_name()}
+                {"id": subject, "object": "model", "owned_by": "xks"},
+                {"id": "jev-latest", "object": "model", "owned_by": "xks", "alias_of": subject}
             ]}),
         ),
-        (Method::Post, "/v1/systemone") => {
+        Route::SystemOne => {
             if !keys.is_empty() && !authorized(&req, keys) {
-                (401, json!({"message": "invalid or missing API key"}))
+                (
+                    401,
+                    json!({"message": "invalid or missing API key (Authorization: Bearer KEY)"}),
+                )
             } else {
                 let mut body = String::new();
                 if req.as_reader().read_to_string(&mut body).is_err() {
                     (400, json!({"message": "unreadable body"}))
+                } else if body.trim().is_empty() {
+                    (
+                        422,
+                        json!({"message": "empty body: POST a JSON request, {\"state\": ..., \"questions\": {...}}"}),
+                    )
                 } else {
                     match serde_json::from_str::<Request>(&body) {
                         Err(e) => (422, json!({"message": format!("invalid request: {e}")})),
@@ -103,15 +172,25 @@ fn handle<S: Scorer>(mut req: HttpRequest, judge: &Judge<S>, keys: &[String]) {
                 }
             }
         }
-        _ => (
+        Route::Method(want) => {
+            allow = Some(want);
+            (
+                405,
+                json!({"message": format!("{path} takes {want}, not {method}")}),
+            )
+        }
+        Route::NotFound => (
             404,
-            json!({"message": format!("no route {} {}", method, path)}),
+            json!({"message": format!("no route {method} {path} (POST /v1/systemone; GET / lists the routes)")}),
         ),
     };
     let json_hdr = Header::from_bytes("Content-Type", "application/json").unwrap();
-    let resp = Response::from_string(result.1.to_string())
+    let mut resp = Response::from_string(result.1.to_string())
         .with_status_code(result.0)
         .with_header(json_hdr);
+    if let Some(m) = allow {
+        resp = resp.with_header(Header::from_bytes("Allow", m).unwrap());
+    }
     let _ = req.respond(resp);
 }
 
@@ -128,4 +207,24 @@ fn authorized(req: &HttpRequest, keys: &[String]) -> bool {
         })
         .map(|k| keys.iter().any(|x| x == &k))
         .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn routes_by_method_and_path() {
+        assert_eq!(route(&Method::Post, "/v1/systemone"), Route::SystemOne);
+        assert_eq!(route(&Method::Post, "/v1/systemone/"), Route::SystemOne);
+        assert_eq!(route(&Method::Get, "/health"), Route::Health);
+        assert_eq!(route(&Method::Get, "/v1/models"), Route::Models);
+        assert_eq!(route(&Method::Get, "/"), Route::Index);
+        assert_eq!(route(&Method::Get, ""), Route::Index);
+        // The path is right, the method is not: say which one it takes.
+        assert_eq!(route(&Method::Get, "/v1/systemone"), Route::Method("POST"));
+        assert_eq!(route(&Method::Post, "/health"), Route::Method("GET"));
+        assert_eq!(route(&Method::Post, "/v1/systemon"), Route::NotFound);
+        assert_eq!(route(&Method::Get, "/v2/systemone"), Route::NotFound);
+    }
 }

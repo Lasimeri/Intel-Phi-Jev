@@ -20,8 +20,9 @@ readings after the fact instead.
 
 ```sh
 make build          # xks against llama.cpp's x86-64 build, and its AVX-512 build when present
-make serve          # background server, subject and site from xks.conf
-curl -s localhost:8090/v1/systemone -d @examples/query.json | jq .
+make serve          # background server, subject and site from xks.conf (shows its progress)
+make query          # examples/query.json, answered by that server
+curl -s localhost:8090/v1/systemone -d @examples/query.json | jq .   # the same over HTTP
 make stop           # stop it and release the huge pages of the cards xks started
 make subprojects    # re-run every experiment, records in docs/subprojects/results/
 make check          # docs, format, lint, build, tests
@@ -29,6 +30,14 @@ make check          # docs, format, lint, build, tests
 
 Defaults live in [`xks.conf`](xks.conf); put a machine's own values in
 `xks.local.conf` (not tracked). Anything in the environment wins.
+
+A plain `xks query` goes to the server running at `XKS_BIND` when there
+is one, instead of loading the subject a second time; `--local`, or any
+engine option on its command line, keeps it in its own process. A request
+is checked before anything slow starts, and one process at a time may
+hold the cards: a second one (an `eval` beside a server on the cards) is
+refused at once with the first one's pid, not left to break it
+([`src/main.md`](src/main.md), [`src/site.md`](src/site.md)).
 
 ## How a request is answered
 
@@ -68,7 +77,7 @@ since a waiting worker spins.
 | command | does |
 | --- | --- |
 | `xks serve [--detach] [--kill-date S]` | the Jev endpoint; `xks stop` ends a detached one and releases the cards whose workers xks started |
-| `xks query --file req.json` | one request; `--compare` also asks the hosted Jev (needs `TYPESAFE_API_KEY`) |
+| `xks query --file req.json` | one request (a running server answers it; `--local` loads the subject here); `--compare` also asks the hosted Jev (needs `TYPESAFE_API_KEY`) |
 | `xks mcp` | an MCP server over stdio, one tool, `judge` |
 | `xks eval cases.jsonl [--rows R]` | accuracy, Brier, ECE, coverage, latency on labelled cases |
 | `xks condition cases.jsonl` | fit a conditioning (per-bucket temperatures) |
@@ -77,7 +86,7 @@ since a waiting worker spins.
 | `xks corroborate A B` | two recorded runs compared fingerprint by fingerprint (sites) |
 | `xks ledger LOG` | what the payload's verbose log says each card computed |
 | `xks subproject list / run NN / run all` | the experiments |
-| `xks release` | stop the card workers, free their huge pages |
+| `xks release` | stop the card workers, free their huge pages (refused while a process holds the cards) |
 
 ## Naming
 

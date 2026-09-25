@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use serde_json::{json, Map, Value};
 
 use xks::backend::bluebird::Bluebird;
@@ -13,7 +13,7 @@ use xks::backend::typesafe::TypeSafe;
 use xks::backend::Scorer;
 use xks::eval;
 use xks::judge::{Judge, JudgeConfig};
-use xks::prompt::Template;
+use xks::prompt::{Layout, Template};
 use xks::protocol::Request;
 use xks::score::Calibration;
 use xks::server::{serve, ServerConfig};
@@ -22,7 +22,9 @@ use xks::server::{serve, ServerConfig};
 #[command(
     name = "xks",
     version,
-    about = "XKEYSCORE for Jev: typed System One judgments, one prefill per session"
+    about = "XKEYSCORE for Jev: typed System One judgments, one prefill per session",
+    after_help = "Start here: `xks serve --detach`, then `xks query --file examples/query.json` \
+                  (a plain query goes to the running server), then `xks stop`."
 )]
 struct Cli {
     /// The subject (a GGUF) ARTICHOKE interrogates.
@@ -114,9 +116,14 @@ enum Cmd {
         detach: bool,
     },
     /// One query. Reads a JSON request from --file or stdin, or builds one
-    /// from --state and --noul/--choice/--score flags.
+    /// from --state and --noul/--choice/--score flags. With a server
+    /// running at XKS_BIND and no engine option on the command line, the
+    /// request goes to that server; otherwise the subject loads here.
     #[command(alias = "ask")]
     Query {
+        /// Load the subject in this process even when a server is running.
+        #[arg(long)]
+        local: bool,
         #[arg(long)]
         file: Option<PathBuf>,
         #[arg(long)]
@@ -202,10 +209,10 @@ enum Cmd {
 
 #[cfg(feature = "artichoke")]
 fn artichoke(cli: &Cli) -> Result<(xks::artichoke::Artichoke, xks::site::Placed), String> {
-    let subject = cli
-        .subject
-        .clone()
-        .ok_or("--subject (or XKS_SUBJECT) is required with --backend-kind artichoke")?;
+    let subject = cli.subject.clone().ok_or(
+        "no subject: set XKS_SUBJECT=/path/to/model.gguf in xks.local.conf, or pass --subject",
+    )?;
+    check_subject(&subject)?;
     // The site first: it sets the payload's environment, which must be in
     // place before llama.cpp registers its backends.
     let site = xks::site::resolve(&cli.site)?;
@@ -236,6 +243,12 @@ fn main() {
     // Defaults from xks.conf and friends, before clap reads the environment
     // and before any thread exists.
     xks::config::load();
+    // Bare `xks`: the help, not a missing-subcommand error. By hand, since
+    // clap counts the variables xks.conf sets as arguments given.
+    if std::env::args_os().len() == 1 {
+        let _ = Cli::command().print_help();
+        std::process::exit(2);
+    }
     if let Err(e) = run() {
         eprintln!("error: {e}");
         std::process::exit(1);
@@ -243,38 +256,21 @@ fn main() {
 }
 
 /// `--backend-kind jev`: the real Jev, through TypeSafe's API. Needs
-/// `TYPESAFE_API_KEY` (the environment, or `xks.local.conf`).
-fn jev(cmd: &Cmd) -> Result<(), String> {
+/// `TYPESAFE_API_KEY` (the environment, or `xks.local.conf`). The request
+/// and the cases come already read and checked.
+fn jev(cmd: &Cmd, request: Option<Request>, cases: Option<Vec<eval::Case>>) -> Result<(), String> {
     let ts = TypeSafe::from_env().ok_or(
         "the real Jev needs TYPESAFE_API_KEY: create a key at console.typesafe.ai and put \
          TYPESAFE_API_KEY=... in xks.local.conf (not tracked) or the environment",
     )?;
-    match cmd {
-        Cmd::Query {
-            file,
-            state,
-            noul,
-            choice,
-            score,
-            ..
-        } => {
-            let req = build_request(
-                file.clone(),
-                state.clone(),
-                noul.clone(),
-                choice.clone(),
-                score.clone(),
-            )?;
+    match (cmd, request, cases) {
+        (Cmd::Query { .. }, Some(req), _) => {
             let (ev, ms) = ts.evaluate(&req).map_err(|e| e.to_string())?;
             println!("{}", serde_json::to_string_pretty(&ev).unwrap());
             eprintln!("jev ({}): {ms:.1} ms end-to-end", ev.model);
             Ok(())
         }
-        Cmd::Eval { file, rows, limit } => {
-            let mut cases = eval::load_cases(file)?;
-            if let Some(n) = limit {
-                cases.truncate(*n);
-            }
+        (Cmd::Eval { rows, .. }, _, Some(cases)) => {
             let t0 = Instant::now();
             let (r, failed) = eval::run_jev(&ts, &cases).map_err(|e| e.to_string())?;
             let wall = t0.elapsed().as_secs_f64();
@@ -351,27 +347,79 @@ fn detach(bind: &str) -> Result<(), String> {
         child.id(),
         log.display()
     );
+    // The child's own lines (site, workers, loading, its error) relayed as
+    // they come: a 35B start is minutes, and silence reads as a hang.
+    let mut relay = Relay::default();
     let t0 = Instant::now();
     while t0.elapsed() < Duration::from_secs(900) {
+        relay.more(&log);
         // Reaped here, so a child that dies at startup is seen at once
         // (unreaped, its /proc entry would outlive it until the timeout).
         if let Ok(Some(status)) = child.try_wait() {
+            relay.rest(&log);
             let _ = std::fs::remove_file(&pidfile);
             return Err(format!(
-                "the server exited ({status}); see {}",
+                "the server exited ({status}); log {}",
                 log.display()
             ));
         }
         if answers() {
+            relay.rest(&log);
             println!("{url}/v1/systemone");
             return Ok(());
         }
         std::thread::sleep(Duration::from_millis(500));
     }
     Err(format!(
-        "the server did not answer in 900 s; see {}",
+        "the server did not answer in 900 s (still running, pid {}); log {}",
+        child.id(),
         log.display()
     ))
+}
+
+/// The lines of a detached server's log shown while `serve --detach`
+/// waits: `xks`'s own (`xks: ...`, `xks listening ...`) and its
+/// `error: ...`, on stderr; llama.cpp's are left in the log. Stdout
+/// carries only the URL.
+#[derive(Default)]
+struct Relay {
+    /// Bytes of the log already looked at.
+    seen: usize,
+}
+
+impl Relay {
+    /// The complete lines written since the last call.
+    fn more(&mut self, log: &Path) {
+        self.take(log, false);
+    }
+
+    /// Everything left, a last unterminated line included.
+    fn rest(&mut self, log: &Path) {
+        self.take(log, true);
+    }
+
+    fn take(&mut self, log: &Path, all: bool) {
+        let Ok(bytes) = std::fs::read(log) else {
+            return;
+        };
+        let new = bytes.get(self.seen..).unwrap_or_default();
+        let end = if all {
+            new.len()
+        } else {
+            new.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1)
+        };
+        for line in String::from_utf8_lossy(&new[..end]).lines() {
+            if relayed(line) {
+                eprintln!("{line}");
+            }
+        }
+        self.seen += end;
+    }
+}
+
+/// Whether a server log line is one `serve --detach` shows.
+fn relayed(line: &str) -> bool {
+    line.starts_with("xks:") || line.starts_with("xks listening") || line.starts_with("error:")
 }
 
 /// The pid in `pidfile` when that process is still a detached `xks serve`.
@@ -420,6 +468,14 @@ fn stop() -> Result<(), String> {
     #[cfg(feature = "artichoke")]
     {
         let cards = xks::site::xks_workers();
+        // Another xks (a foreground server, an eval) is using the cards:
+        // stopping its workers would break it.
+        if let Some(who) = xks::site::cards_holder() {
+            if !cards.is_empty() {
+                eprintln!("xks: cards {cards:?} left running: {who} is using them");
+            }
+            return Ok(());
+        }
         if !cards.is_empty() {
             xks::site::release(&cards)?;
             eprintln!("xks: card workers stopped, huge pages released on {cards:?}");
@@ -477,11 +533,16 @@ fn read_rows(path: &PathBuf) -> Result<Vec<eval::Row>, String> {
 }
 
 fn run() -> Result<(), String> {
-    let cli = Cli::parse();
+    let matches = Cli::command().get_matches();
+    let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
     let template: Template = cli.template.parse()?;
+    let layout: Layout = cli.layout.parse()?;
     let conditioning: Calibration = match &cli.conditioning {
-        Some(p) => serde_json::from_str(&std::fs::read_to_string(p).map_err(|e| e.to_string())?)
-            .map_err(|e| format!("conditioning: {e}"))?,
+        Some(p) => {
+            let at = |e: &dyn std::fmt::Display| format!("conditioning {}: {e}", p.display());
+            serde_json::from_str(&std::fs::read_to_string(p).map_err(|e| at(&e))?)
+                .map_err(|e| at(&e))?
+        }
         None => Calibration::default(),
     };
     // Commands that need no backend.
@@ -530,6 +591,12 @@ fn run() -> Result<(), String> {
         }
         #[cfg(feature = "artichoke")]
         Cmd::Release => {
+            if let Some(who) = xks::site::cards_holder() {
+                return Err(format!(
+                    "{who} is using the cards; stop it first \
+                     (`xks stop` for a detached server)"
+                ));
+            }
             let cards = xks::site::card_windows();
             xks::site::release(&cards)?;
             eprintln!("xks: workers stopped and huge pages released on cards {cards:?}");
@@ -537,10 +604,78 @@ fn run() -> Result<(), String> {
         }
         _ => {}
     }
+    // Everything a command reads is read and checked here, before a site
+    // is prepared (a worker restart) or the subject loads (minutes on the
+    // 35B): a mistake in it is said in a moment.
+    //
+    // First, whether a plain query goes to a running server, which already
+    // has the subject loaded (and on the cards site, the cards): whether
+    // stdin is read here depends on it.
+    let server = match &cli.cmd {
+        Cmd::Query { local: false, .. }
+            if !engine_on_command_line(&matches)
+                && !matches!(cli.backend_kind.as_str(), "jev" | "typesafe") =>
+        {
+            running_server()
+        }
+        _ => None,
+    };
+    let request = match &cli.cmd {
+        Cmd::Query {
+            file,
+            state,
+            noul,
+            choice,
+            score,
+            compare,
+            ..
+        } => {
+            if *compare && TypeSafe::from_env().is_none() {
+                return Err(
+                    "--compare asks the hosted Jev, which needs TYPESAFE_API_KEY \
+                            (in xks.local.conf or the environment)"
+                        .into(),
+                );
+            }
+            let stdin = file.is_none()
+                && state.is_none()
+                && noul.is_empty()
+                && choice.is_empty()
+                && score.is_empty();
+            let req = build_request(
+                file.clone(),
+                state.clone(),
+                noul.clone(),
+                choice.clone(),
+                score.clone(),
+            )?;
+            if stdin && reexecs(&cli) && server.is_none() {
+                hand_over(&req)?;
+            }
+            Some(req)
+        }
+        _ => None,
+    };
+    let cases = match &cli.cmd {
+        Cmd::Eval { file, limit, .. } => {
+            let mut c = eval::load_cases(file)?;
+            if let Some(n) = limit {
+                c.truncate(*n);
+            }
+            Some(c)
+        }
+        Cmd::Condition { file, .. } => Some(eval::load_cases(file)?),
+        #[cfg(feature = "artichoke")]
+        Cmd::Polygraph { file, .. } => Some(eval::load_cases(file)?),
+        _ => None,
+    };
+    if let Cmd::Serve { bind, .. } = &cli.cmd {
+        free_to_bind(bind)?;
+    }
     #[cfg(feature = "artichoke")]
-    if let Cmd::Polygraph { file, rows, limit } = &cli.cmd {
+    if let Cmd::Polygraph { rows, limit, .. } = &cli.cmd {
         let (engine, _) = artichoke(&cli)?;
-        let cases = eval::load_cases(file)?;
+        let cases = cases.unwrap_or_default();
         let report =
             xks::polygraph::run(&engine, template, &cases, *limit).map_err(|e| e.to_string())?;
         if *rows {
@@ -555,14 +690,21 @@ fn run() -> Result<(), String> {
     // label log-probabilities, so it is not a Scorer; query and eval talk to
     // it directly.
     if matches!(cli.backend_kind.as_str(), "jev" | "typesafe") {
-        return jev(&cli.cmd);
+        return jev(&cli.cmd, request, cases);
+    }
+    if let (Some((url, subject)), Some(req), Cmd::Query { compare, .. }) =
+        (&server, &request, &cli.cmd)
+    {
+        return ask_server(url, subject, req, *compare);
     }
     let mut site_name = "remote";
+    let mut site_cards = Vec::new();
     let (scorer, template): (Box<dyn Scorer>, Template) = match cli.backend_kind.as_str() {
         #[cfg(feature = "artichoke")]
         "artichoke" => {
             let (engine, placed) = artichoke(&cli)?;
             site_name = placed.site.name();
+            site_cards = placed.cards;
             (Box::new(engine), template)
         }
         "bluebird" | "llamacpp" => (Box::new(Bluebird::new(cli.backend.clone())), template),
@@ -590,7 +732,7 @@ fn run() -> Result<(), String> {
     };
     let cfg = JudgeConfig {
         template,
-        layout: cli.layout.parse()?,
+        layout,
         calibration: conditioning,
         permutations: cli.permutations,
         debug: cli.debug,
@@ -616,36 +758,28 @@ fn run() -> Result<(), String> {
                     bind,
                     api_keys,
                     kill_date: (kill_date > 0).then(|| Duration::from_secs(kill_date)),
+                    site: site_name.into(),
+                    cards: site_cards,
                 },
             )
         }
-        Cmd::Query {
-            file,
-            state,
-            noul,
-            choice,
-            score,
-            compare,
-        } => {
-            let req = build_request(file, state, noul, choice, score)?;
+        Cmd::Query { compare, .. } => {
+            // Read before the site was prepared; in the avx512 site's
+            // outer process (the one that left it for stdin) this point
+            // is never reached.
+            let req = request.ok_or("no request was read")?;
             let t0 = std::time::Instant::now();
             let ev = judge.evaluate(&req).map_err(|e| e.to_string())?;
             let ms = t0.elapsed().as_secs_f64() * 1e3;
             println!("{}", serde_json::to_string_pretty(&ev).unwrap());
             eprintln!("local: {:.1} ms end-to-end", ms);
             if compare {
-                let ts = TypeSafe::from_env().ok_or("TYPESAFE_API_KEY not set")?;
-                let (remote, rms) = ts.evaluate(&req).map_err(|e| e.to_string())?;
-                println!("{}", serde_json::to_string_pretty(&remote).unwrap());
-                eprintln!("typesafe: {:.1} ms end-to-end", rms);
+                compare_with_jev(&req)?;
             }
             Ok(())
         }
-        Cmd::Eval { file, rows, limit } => {
-            let mut cases = eval::load_cases(&file)?;
-            if let Some(n) = limit {
-                cases.truncate(n);
-            }
+        Cmd::Eval { rows, .. } => {
+            let cases = cases.unwrap_or_default();
             let t0 = std::time::Instant::now();
             let (r, failed) = eval::run(&judge, &cases).map_err(|e| e.to_string())?;
             let wall = t0.elapsed().as_secs_f64();
@@ -667,8 +801,8 @@ fn run() -> Result<(), String> {
             Ok(())
         }
         Cmd::Mcp => xks::mcp::serve(&judge).map_err(|e| e.to_string()),
-        Cmd::Condition { file, out } => {
-            let cases = eval::load_cases(&file)?;
+        Cmd::Condition { out, .. } => {
+            let cases = cases.unwrap_or_default();
             let (r, failed) = eval::run(&judge, &cases).map_err(|e| e.to_string())?;
             let before = eval::metrics(&r, failed, &Calibration::default());
             let fitted = eval::fit(&r);
@@ -694,6 +828,178 @@ fn run() -> Result<(), String> {
     }
 }
 
+/// Whether this process is the avx512 site's outer one, which `prepare`
+/// replaces (exec) with the AVX-512 build under phi512.
+fn reexecs(cli: &Cli) -> bool {
+    cfg!(feature = "artichoke")
+        && cli.backend_kind == "artichoke"
+        && cli.site == "avx512"
+        && std::env::var_os("XKS_SITE_INNER").is_none()
+}
+
+/// Where the avx512 site's outer process leaves a request it read from
+/// stdin, for the process under phi512 (the variable holds the path).
+const STDIN_REQUEST: &str = "XKS_STDIN_REQUEST";
+
+/// Hand a request read from stdin to the process that replaces this one
+/// under phi512: stdin is read here already, and phi512's ssh to card 0
+/// would consume what was left of it on the way (measured: the inner one
+/// saw it empty). A file under the run directory, removed by the reader.
+fn hand_over(req: &Request) -> Result<(), String> {
+    let dir = run_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let p = dir.join(format!("request-{}.json", std::process::id()));
+    let text = serde_json::to_string(req).map_err(|e| e.to_string())?;
+    std::fs::write(&p, text).map_err(|e| format!("{}: {e}", p.display()))?;
+    std::env::set_var(STDIN_REQUEST, &p);
+    Ok(())
+}
+
+/// The global options that shape the engine (clap ids). One of them on
+/// the command line means the caller wants this process's engine, so
+/// `query` does not hand its request to a running server. A value from
+/// the environment or a config file does not count: `xks.conf` sets most.
+const ENGINE_ARGS: &[&str] = &[
+    "subject",
+    "ctx",
+    "forks",
+    "batch",
+    "ubatch",
+    "threads",
+    "verbose",
+    "repack",
+    "site",
+    "no_offload",
+    "backend_kind",
+    "backend",
+    "model",
+    "api_key_env",
+    "extra",
+    "layout",
+    "template",
+    "conditioning",
+    "permutations",
+    "debug",
+];
+
+fn engine_on_command_line(m: &clap::ArgMatches) -> bool {
+    ENGINE_ARGS
+        .iter()
+        .any(|id| m.value_source(id) == Some(clap::parser::ValueSource::CommandLine))
+}
+
+/// The server answering at `XKS_BIND`, if one does: its URL and subject.
+fn running_server() -> Option<(String, String)> {
+    let bind = std::env::var("XKS_BIND").unwrap_or_else(|_| "127.0.0.1:8090".into());
+    let url = format!("http://{bind}");
+    let health: Value = ureq::AgentBuilder::new()
+        .timeout(Duration::from_secs(2))
+        .build()
+        .get(&format!("{url}/health"))
+        .call()
+        .ok()?
+        .into_json()
+        .ok()?;
+    let subject = health.get("subject")?.as_str()?.to_string();
+    Some((url, subject))
+}
+
+/// `query` through the running server: the same request, the answer
+/// printed as a local one is.
+fn ask_server(url: &str, subject: &str, req: &Request, compare: bool) -> Result<(), String> {
+    eprintln!(
+        "xks: asking the server at {url} ({subject}); --local loads the subject here instead"
+    );
+    let mut call = ureq::AgentBuilder::new()
+        .timeout_connect(Duration::from_secs(5))
+        // A long session on the 35B is a minute and more.
+        .timeout_read(Duration::from_secs(900))
+        .build()
+        .post(&format!("{url}/v1/systemone"));
+    let key = std::env::var("XKS_API_KEYS").ok().and_then(|k| {
+        k.split(',')
+            .map(str::trim)
+            .find(|k| !k.is_empty())
+            .map(String::from)
+    });
+    if let Some(k) = key {
+        call = call.set("Authorization", &format!("Bearer {k}"));
+    }
+    let t0 = Instant::now();
+    let ev: Value = match call.send_json(serde_json::to_value(req).map_err(|e| e.to_string())?) {
+        Ok(r) => r.into_json().map_err(|e| format!("{url}: {e}"))?,
+        Err(ureq::Error::Status(code, r)) => {
+            let body: Value = r.into_json().unwrap_or(Value::Null);
+            let msg = body
+                .get("message")
+                .and_then(Value::as_str)
+                .unwrap_or("(no message)")
+                .to_string();
+            return Err(format!("the server answered {code}: {msg}"));
+        }
+        Err(e) => return Err(format!("{url}: {e}")),
+    };
+    let ms = t0.elapsed().as_secs_f64() * 1e3;
+    println!("{}", serde_json::to_string_pretty(&ev).unwrap());
+    eprintln!("server: {ms:.1} ms end-to-end");
+    if compare {
+        compare_with_jev(req)?;
+    }
+    Ok(())
+}
+
+/// `query --compare`: the same request to the hosted Jev, after the local
+/// answer.
+fn compare_with_jev(req: &Request) -> Result<(), String> {
+    let ts = TypeSafe::from_env().ok_or("TYPESAFE_API_KEY not set")?;
+    let (remote, rms) = ts.evaluate(req).map_err(|e| e.to_string())?;
+    println!("{}", serde_json::to_string_pretty(&remote).unwrap());
+    eprintln!("typesafe: {rms:.1} ms end-to-end");
+    Ok(())
+}
+
+/// The subject, checked before the site is prepared: a path that is not
+/// there is said with where to set it, not after a worker restart and
+/// llama.cpp's loader.
+#[cfg(feature = "artichoke")]
+fn check_subject(p: &Path) -> Result<(), String> {
+    if p.is_file() {
+        return Ok(());
+    }
+    Err(format!(
+        "the subject {} {}: set XKS_SUBJECT=/path/to/model.gguf in xks.local.conf, or pass --subject",
+        p.display(),
+        if p.exists() {
+            "is not a file"
+        } else {
+            "does not exist"
+        }
+    ))
+}
+
+/// A foreground `serve`'s address, tried before the subject loads and let
+/// go at once; the server binds it for real when the engine is up.
+fn free_to_bind(bind: &str) -> Result<(), String> {
+    std::net::TcpListener::bind(bind).map(drop).map_err(|e| {
+        format!(
+            "cannot listen on {bind}: {e} (a server already there? xks stop, or --bind another)"
+        )
+    })
+}
+
+/// A request read from `from` (a file's path, or stdin), and its
+/// questions checked: the same checks the server makes.
+fn parse_request(text: &str, from: &str) -> Result<Request, String> {
+    if text.trim().is_empty() {
+        return Err(format!(
+            "{from}: empty (a JSON request: state and questions)"
+        ));
+    }
+    let r: Request = serde_json::from_str(text).map_err(|e| format!("{from}: {e}"))?;
+    xks::protocol::parse_questions(&r.questions).map_err(|e| format!("{from}: {e}"))?;
+    Ok(r)
+}
+
 fn build_request(
     file: Option<PathBuf>,
     state: Option<String>,
@@ -702,14 +1008,29 @@ fn build_request(
     score: Vec<String>,
 ) -> Result<Request, String> {
     if let Some(p) = file {
-        let text = std::fs::read_to_string(&p).map_err(|e| e.to_string())?;
-        return serde_json::from_str(&text).map_err(|e| e.to_string());
+        let text = std::fs::read_to_string(&p).map_err(|e| format!("{}: {e}", p.display()))?;
+        return parse_request(&text, &p.display().to_string());
     }
     if state.is_none() && noul.is_empty() && choice.is_empty() && score.is_empty() {
+        use std::io::IsTerminal;
+        // Under phi512: the outer process read stdin and left it here.
+        if let Some(p) = std::env::var_os(STDIN_REQUEST) {
+            let p = PathBuf::from(p);
+            let text = std::fs::read_to_string(&p).map_err(|e| format!("{}: {e}", p.display()))?;
+            let _ = std::fs::remove_file(&p);
+            return parse_request(&text, "the request on stdin");
+        }
+        if std::io::stdin().is_terminal() {
+            return Err(
+                "no request: --file req.json, --state with --noul/--choice/--score, \
+                        or a JSON request piped on stdin"
+                    .into(),
+            );
+        }
         let mut text = String::new();
         std::io::Read::read_to_string(&mut std::io::stdin(), &mut text)
-            .map_err(|e| e.to_string())?;
-        return serde_json::from_str(&text).map_err(|e| e.to_string());
+            .map_err(|e| format!("stdin: {e}"))?;
+        return parse_request(&text, "the request on stdin");
     }
     let state = state.ok_or("--state is required with --noul/--choice/--score")?;
     let mut questions = Map::new();
@@ -721,7 +1042,8 @@ fn build_request(
         let (id, rest) = split_once(&s, '=')?;
         let (instr, opts) = split_once(rest, '|')?;
         let mut criteria = Map::new();
-        for o in opts.split(',') {
+        // An empty entry (`a,,b`, a trailing comma) is no option.
+        for o in opts.split(',').filter(|o| !o.trim().is_empty()) {
             let (k, d) = o.split_once(':').unwrap_or((o, ""));
             criteria.insert(
                 k.trim().into(),
@@ -740,17 +1062,23 @@ fn build_request(
     for s in score {
         let (id, rest) = split_once(&s, '=')?;
         let (instr, levels) = split_once(rest, '|')?;
-        let levels: Vec<&str> = levels.split(',').map(str::trim).collect();
+        let levels: Vec<&str> = levels
+            .split(',')
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .collect();
         questions.insert(
             id.into(),
             json!({"type": "score", "instructions": instr, "criteria": levels}),
         );
     }
-    Ok(Request {
+    let r = Request {
         model: None,
         state: Value::String(state),
         questions,
-    })
+    };
+    xks::protocol::parse_questions(&r.questions)?;
+    Ok(r)
 }
 
 fn split_once(s: &str, c: char) -> Result<(&str, &str), String> {
@@ -783,5 +1111,115 @@ mod tests {
         assert!(!is(&["/usr/bin/firefox", "serve"]));
         assert!(!is(&["/r/target/release/xks", "eval", "cases.jsonl"]));
         assert!(!is(&[]));
+    }
+
+    #[test]
+    fn every_engine_option_is_a_real_argument() {
+        use clap::CommandFactory;
+        let cmd = super::Cli::command();
+        for id in super::ENGINE_ARGS {
+            assert!(
+                cmd.get_arguments().any(|a| a.get_id() == *id),
+                "{id} is not an argument of xks"
+            );
+        }
+    }
+
+    #[test]
+    fn a_query_goes_to_a_server_only_without_engine_options() {
+        use clap::CommandFactory;
+        let on_line = |args: &[&str]| {
+            let m = super::Cli::command().try_get_matches_from(args).unwrap();
+            super::engine_on_command_line(&m)
+        };
+        assert!(!on_line(&["xks", "query", "--file", "q.json"]));
+        assert!(!on_line(&["xks", "query", "--compare", "--state", "s"]));
+        assert!(on_line(&[
+            "xks", "--site", "x86", "query", "--file", "q.json"
+        ]));
+        assert!(on_line(&["xks", "--debug", "query", "--file", "q.json"]));
+        assert!(on_line(&["xks", "--subject", "m.gguf", "query"]));
+    }
+
+    #[test]
+    fn a_request_error_names_where_it_came_from() {
+        let dir = std::env::temp_dir().join(format!("xks-req-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = |name: &str, text: &str| {
+            let p = dir.join(name);
+            std::fs::write(&p, text).unwrap();
+            Some(p)
+        };
+        let from = |f| super::build_request(f, None, vec![], vec![], vec![]);
+        let missing = from(Some(dir.join("absent.json"))).unwrap_err();
+        assert!(missing.contains("absent.json"), "{missing}");
+        let bad = from(file("bad.json", "{\"state\":")).unwrap_err();
+        assert!(bad.contains("bad.json"), "{bad}");
+        let empty = from(file("empty.json", "\n")).unwrap_err();
+        assert!(empty.contains("empty"), "{empty}");
+        // The server's own checks, before any subject loads.
+        let one_level = from(file(
+            "score.json",
+            r#"{"state":"s","questions":{"a":{"type":"score","instructions":"i","criteria":["x"]}}}"#,
+        ))
+        .unwrap_err();
+        assert!(one_level.contains("2 to 10 levels"), "{one_level}");
+        let none = from(file("none.json", r#"{"state":"s","questions":{}}"#)).unwrap_err();
+        assert!(none.contains("no questions"), "{none}");
+        assert!(from(file(
+            "ok.json",
+            r#"{"state":"s","questions":{"a":{"type":"noul","instructions":"i"}}}"#
+        ))
+        .is_ok());
+        let no_options = super::build_request(
+            None,
+            Some("s".into()),
+            vec![],
+            vec!["c=pick|".into()],
+            vec![],
+        );
+        let no_options = no_options.unwrap_err();
+        assert!(no_options.contains("at least one option"), "{no_options}");
+        let trailing = super::build_request(
+            None,
+            Some("s".into()),
+            vec![],
+            vec![],
+            vec!["r=how much|low,high,".into()],
+        )
+        .unwrap();
+        assert_eq!(
+            trailing.questions["r"]["criteria"],
+            serde_json::json!(["low", "high"])
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn detach_shows_xks_lines_and_leaves_llama_cpp_in_the_log() {
+        assert!(super::relayed("xks: loading m.gguf (21.7 GB)"));
+        assert!(super::relayed(
+            "xks listening on http://127.0.0.1:8090  (subject s)"
+        ));
+        assert!(super::relayed("error: the subject /m.gguf does not exist"));
+        assert!(!super::relayed(
+            "llama_context: n_ctx_seq (16384) > n_ctx_train"
+        ));
+        assert!(!super::relayed("load: control-looking token"));
+    }
+
+    #[test]
+    fn detach_relays_whole_lines_once_and_the_last_at_the_end() {
+        let log = std::env::temp_dir().join(format!("xks-relay-{}.log", std::process::id()));
+        std::fs::write(&log, "xks: site x86\nxks: loa").unwrap();
+        let mut r = super::Relay::default();
+        r.more(&log);
+        assert_eq!(r.seen, "xks: site x86\n".len());
+        std::fs::write(&log, "xks: site x86\nxks: loading\nerror: x").unwrap();
+        r.more(&log);
+        assert_eq!(r.seen, "xks: site x86\nxks: loading\n".len());
+        r.rest(&log);
+        assert_eq!(r.seen, "xks: site x86\nxks: loading\nerror: x".len());
+        std::fs::remove_file(&log).unwrap();
     }
 }

@@ -26,11 +26,23 @@ pub struct Case {
 
 pub fn load_cases(path: &Path) -> Result<Vec<Case>, String> {
     let text = fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    text.lines()
-        .filter(|l| !l.trim().is_empty() && !l.trim_start().starts_with('#'))
+    // Numbered before the blank and comment lines are dropped, so an
+    // error names the line an editor shows.
+    let cases: Vec<Case> = text
+        .lines()
         .enumerate()
-        .map(|(i, l)| serde_json::from_str(l).map_err(|e| format!("line {}: {e}", i + 1)))
-        .collect()
+        .filter(|(_, l)| !l.trim().is_empty() && !l.trim_start().starts_with('#'))
+        .map(|(i, l)| {
+            serde_json::from_str(l).map_err(|e| format!("{} line {}: {e}", path.display(), i + 1))
+        })
+        .collect::<Result<_, _>>()?;
+    if cases.is_empty() {
+        return Err(format!(
+            "{}: no cases (one JSON object per line)",
+            path.display()
+        ));
+    }
+    Ok(cases)
 }
 
 /// One scored question with its gold index, kept for fitting/reporting.

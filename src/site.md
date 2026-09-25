@@ -53,7 +53,27 @@ started their worker); `xks release` takes every card that is up.
 
 One process at a time may hold the cards: the payload frees every card's
 uploads when it opens, so a second process would pull the first one's rows
-out from under it.
+out from under it, and a worker restart for another site kills the one
+running. Since 2026-09-25 this is enforced, not only written down: a
+process takes `$XDG_RUNTIME_DIR/xks/cards.lock` (`flock`, exclusive, never
+waiting) before it touches a worker, holds it for its life, and writes its
+pid and command into it. A second one fails at once with the first one's
+pid and command, before any worker or model is touched (before 2026-09-25
+nothing stopped an `eval` beside a detached server from doing that). The
+lock goes when its holder does, crash included; the pid is named only
+while it is alive, and a holder that wrote nothing is "another process",
+with `fuser -v` on the lock file to name it. On the avx512 site the
+process under phi512 takes it, not the outer one, which exec replaces.
+`xks release` refuses while the lock is held; `xks stop` leaves the
+workers of a holder that is not its server running. Only `xks` takes this
+lock: the sibling's own tools (`phi-ggml.sh`, `phi512.sh` run by hand) do
+not, and are not policed here.
+
+Measured 2026-09-25 with the 0.5B on port 8095 (`xks --site cards serve
+--detach`, then `xks --site cards eval ... --limit 1`, `xks query --local
+...`, `xks release`): all three refused, naming the server's pid, the
+`eval` in 3 ms (`time`); `xks stop` then left both cards with no worker
+and 0 huge pages (`phi-vpu.sh -c N config`).
 
 ## The avx512 site
 
@@ -62,6 +82,15 @@ The outer `xks` (x86-64 build) re-executes `target/avx512/release/xks`
 `XKS_SITE_INNER=1`, which is how the inner one knows not to re-execute. The
 wrapper preloads libphi512 through `LD_PRELOAD` (never `/etc/ld.so.preload`,
 which also catches `sudo`).
+
+A query's request on stdin is read and checked by the outer one, before
+anything slow ([`main.md`](main.md)), so the inner one cannot read it
+again: the outer writes it to `$XDG_RUNTIME_DIR/xks/request-PID.json` and
+names it in `XKS_STDIN_REQUEST`, which the inner one reads (and removes)
+in place of stdin. Before 2026-09-25 stdin reached the inner one empty
+anyway whenever the wrapper started card 0's worker: that start's ssh read
+it (measured: `xks --site avx512 query < req.json`; the sibling's
+`phi512.sh` now gives the start `/dev/null`).
 
 ## What stops the avx512 site today
 

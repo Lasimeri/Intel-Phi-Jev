@@ -1,6 +1,8 @@
 # eval.rs: labelled cases
 
-A case file is JSONL (`#` lines are comments): `state`, `questions` and
+A case file is JSONL (`#` lines and blank lines are skipped; an error
+names the file and the line number an editor shows, and a file with no
+case is an error): `state`, `questions` and
 `gold` (question id to the expected option key, level index, or `"yes"` /
 `"no"`). `run` asks every case and keeps, per question, the raw label
 log-probabilities and the gold index (`Row`, which `--rows` writes and
