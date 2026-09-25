@@ -167,6 +167,8 @@ impl<S: Scorer> Judge<S> {
         Ok(out)
     }
 
+    /// Every answer with its whole distribution: the sea of glass
+    /// (Revelation 4:6), clear to the bottom, never a verdict alone.
     pub fn evaluate(&self, req: &Request) -> Result<Evaluation, BackendError> {
         let raws = self.raw(req)?;
         let mut answers = Map::new();

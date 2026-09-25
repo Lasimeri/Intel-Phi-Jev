@@ -1,3 +1,6 @@
+//! The measuring reed (Revelation 11:1) and the books opened (20:12):
+//! every claim measured, and the measure written down.
+//!
 //! Subprojects: every experiment in this repository as one command,
 //! `xks subproject run NN` (or `all`), after MKULTRA's numbered subprojects,
 //! each with its own report. A subproject runs `xks` itself as child

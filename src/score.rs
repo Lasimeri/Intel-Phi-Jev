@@ -1,6 +1,7 @@
 //! Turn next-token log-probabilities over the option labels into typed
 //! answers: restricted softmax, temperature calibration, confidence, and the
 //! probability-weighted score.
+//! The pair of balances (Revelation 6:5): a distribution weighed.
 
 use std::collections::HashMap;
 

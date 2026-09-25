@@ -81,6 +81,29 @@ since a waiting worker spins.
 
 ## Naming
 
+### The foundation: Revelation
+
+"Therefore whosoever heareth these sayings of mine, and doeth them, I will
+liken him unto a wise man, which built his house upon a rock" (Matthew
+7:24); the one who built on the sand saw it fall (7:26 to 27). The names
+of this project stand on one book, the Revelation to John, and the lenses
+below are built on it: they name parts, it names what the parts are for.
+Quotations are the King James Version.
+
+| name | Revelation | what it was | what it is here |
+| --- | --- | --- | --- |
+| Apocalypse | 1:1 | the book's own name, *apokalypsis*, an unveiling: what was hidden, shown | what `xks` is for: the subject's hidden judgment shown as its whole distribution, never as words it chose to say |
+| the sealed book | 5:1 | "a book written within and on the backside, sealed with seven seals", the seals opened one by one | the session: the state sealed in its own segment and read once; each fingerprint opens it once, and opening one leaves the others as they were (each fork is a copy) |
+| Alpha and Omega | 1:8, 22:13 | "the beginning and the end, the first and the last" | the lettered options, A onward (the `letters` layout): an answer is a letter |
+| the pair of balances | 6:5 | the third seal's rider, "a pair of balances in his hand" | the confidence formulas ([`src/score.rs`](src/score.rs)): an answer's distribution weighed |
+| the sea of glass | 4:6 | "a sea of glass like unto crystal" before the throne | every answer's whole distribution returned, clear to the bottom: never a verdict alone |
+| the measuring reed | 11:1, 21:15 | the reed given to "measure the temple of God", the golden reed that measured the city | the subprojects: every claim measured, the measure recorded beside it |
+| the books opened | 20:12 | "judged out of those things which were written in the books, according to their works" | the records ([`docs/subprojects/results`](docs/subprojects/results/)) and the ledger: a claim is judged by what was written when it was measured |
+| time no longer | 10:6 | "that there should be time no longer" | the end of a server's time (`serve --kill-date`, which the Stuxnet lens also names) |
+| the foundations of the wall | 21:14, 21:19 | the city wall's twelve foundations, "garnished with all manner of precious stones" | `make check`: what every change stands on (the documentation rules, format, lint, both builds, the tests) |
+
+### The lenses, built on it
+
 Four lenses, each name chosen for what its original did. The fourth is the
 Gateway Process, from "Analysis and Assessment of Gateway Process" (Lt.
 Col. Wayne M. McDonnell, US Army, 1983; released through the CIA's

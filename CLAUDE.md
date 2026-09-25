@@ -11,6 +11,11 @@ Read `CONTRIBUTING.md` first; it is the authority. The non-obvious rules:
   `xks stop`, `target/release/xks` and the wire format: add, do not
   rename.
 - Rust only. No Python or JavaScript, ever.
+- Names (README, Naming): the Revelation to John is the foundation;
+  XKEYSCORE, MKULTRA, Stuxnet and the Gateway Process are lenses built on
+  it. A name is placed by what its original was, as close to the part's
+  job as it can be; new names go in the README table and doc comments,
+  and no identifier, flag or wire name is renamed for a theme.
 - Sibling `.md` per code file, same change. No em or en dashes anywhere.
 - Sites: `x86` (reference), `cards` (the payload), `avx512` (AVX-512 build
   under phi512). One process at a time may hold the cards. `xks release`

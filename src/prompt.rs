@@ -153,6 +153,7 @@ impl Rendered {
 /// tokenizers split into several tokens; every label has the same length,
 /// so none is a prefix of another and a label's probability is the product
 /// of its tokens' (read by ARTICHOKE as a trie of forks).
+/// Alpha and Omega (Revelation 1:8): an answer is a letter.
 pub fn label(i: usize, n: usize) -> String {
     if n <= LETTERS {
         format!(" {}", (b'A' + i as u8) as char)
@@ -168,7 +169,8 @@ pub const LETTERS: usize = 26;
 /// backend must read multi-token labels).
 pub const MAX_OPTIONS: usize = 255;
 
-/// Render the shared prefix for a session.
+/// Render the shared prefix for a session. The sealed book (Revelation
+/// 5:1): read once, and every fingerprint opens it without changing it.
 pub fn prefix(template: Template, session: &str) -> Segs {
     let mut p = Segs::default();
     match template {

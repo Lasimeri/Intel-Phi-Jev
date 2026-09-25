@@ -55,7 +55,7 @@ clippy: ## Lint
 docs-check: ## Sibling .md files, the no-dash rule, relative links
 	scripts/check-docs.sh
 
-check: docs-check fmt clippy build test ## Everything before a commit
+check: docs-check fmt clippy build test ## Everything before a commit (the foundations of the wall, Revelation 21:14)
 
 clean: ## Remove build outputs
 	cargo clean

@@ -1,7 +1,8 @@
 //! A tiny synchronous HTTP server exposing `POST /v1/systemone` (the Jev
 //! wire format, so the TypeSafe SDKs work against it through
 //! `TYPESAFE_BASE_URL`), with an optional kill date: an idle period after
-//! which it exits and gives the cards back. See server.md.
+//! which it exits and gives the cards back ("that there should be time no
+//! longer", Revelation 10:6). See server.md.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};

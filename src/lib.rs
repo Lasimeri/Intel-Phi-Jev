@@ -3,6 +3,9 @@
 //! running on this host with its matrix multiplies shared with the Xeon Phi
 //! cards.
 //!
+//! The foundation of its names is the Revelation to John (README, Naming):
+//! an apocalypse, an unveiling, the subject's hidden judgment shown whole.
+//!
 //! Pipeline: [`prompt`] renders the session (the state) once and each
 //! fingerprint (a question) as a suffix whose next token is an option
 //! label; a [`backend::Scorer`] returns the label log-probabilities (the

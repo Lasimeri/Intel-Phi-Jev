@@ -1,3 +1,5 @@
+//! The books opened (Revelation 20:12): judged by what was written.
+//!
 //! The ledger: what the payload's verbose log (`PHI_GGML_VERBOSE=1`) says
 //! each card and the host did, totalled, so "the cards did the work" is a
 //! number and not a picture of busy threads (a waiting worker spins, and a
