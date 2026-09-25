@@ -50,6 +50,39 @@ CPU` or `Phi, CPU`), then `xks: loading NAME (N GB)` before the model
 load, the long step: a detached server's log says what it is doing while
 it loads, and Mechanical Jev's TUI shows that line as a start's progress.
 
+## Pages read in as used (2026-09-25)
+
+llama.cpp maps a model with `MAP_POPULATE` (`llama_mmap`,
+`src/llama-mmap.cpp`, prefetch on from `llama_model::load_tensors`), so a
+load reads the whole file into the process. On the offloaded sites that
+is memory the host never needed: the rows the cards keep are dropped from
+the host after their upload (the payload's `drop_pages`), and some pages
+no request touches (tokens never embedded, experts never routed to) are
+held all the same. `Options::lazy_pages` (set by `main.rs` for the `cards`
+and `avx512` sites unless `--no-offload`) raises `LAZY_PAGES` around
+`llama_model_load_from_file`, and the `mmap` the xks binary exports
+([`../main.md`](../main.md)) maps the subject without the flag: its pages
+come in as the first request uses them, and the cards' rows pass through
+the host one tensor at a time on their way to the cards. llama.cpp is not
+modified. The `x86` site is left as it was.
+
+Measured 2026-09-25, the 35B-A3B Q4_K_M at the cards site on 8095, xks's
+resident memory from `/proc/PID/status`, `examples/query.json` three
+times (the steady figure depends on how much of the model the requests
+reach: another request can route to experts these three did not):
+
+| | populated (before) | read in as used |
+| --- | --- | --- |
+| right after the load, a server nobody has asked yet | 21.3 GiB (20.2 of it the file) | 1.42 GiB (11 MB of the file) |
+| the first request | 21 s | 30.7 s (the pages fault in as used) |
+| after three requests | 14.1 GiB, peak 21.6 | 11.2 GiB, peak 11.2 |
+
+On the avx512 site (the 0.5B, the inner xks under phi512 with libphi512
+preloaded) the load left 13 MB of the file resident. A test maps a
+file with `MAP_POPULATE` through the exported `mmap` and reads its
+resident size from `/proc/self/smaps`: all of it with the flag clear,
+none with it set.
+
 ## Measured
 
 - The copy is exact: with one fork per round (so forked and split make the

@@ -31,4 +31,7 @@ Read `CONTRIBUTING.md` first; it is the authority. The non-obvious rules:
 - Traps: perl substitutions with `{}` or `|` delimiters over Rust code break
   (use the Edit tool); `pkill -f` from a tool shell can kill the shell
   itself (kill by pid); the payload needs repacking off or it is offered
-  almost nothing; `--forks 1` is the exactness test for the copy.
+  almost nothing; `--forks 1` is the exactness test for the copy; the
+  binary exports its own `mmap` (it strips `MAP_POPULATE` while the
+  subject loads on an offloaded site, main.md), so a host-memory figure
+  from before 2026-09-25 counts the whole model populated at load.

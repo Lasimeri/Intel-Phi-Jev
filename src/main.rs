@@ -236,7 +236,68 @@ fn artichoke(cli: &Cli) -> Result<(xks::artichoke::Artichoke, xks::site::Placed)
     o.flash_attn = placed.flash_attn;
     o.backend_dir = std::env::var_os("XKS_BACKEND_DIR").map(PathBuf::from);
     o.verbose = cli.verbose;
+    // Offloaded, the cards' rows leave the host after their upload: read
+    // them in only then, a tensor at a time, not the whole file at load.
+    o.lazy_pages = placed.site != xks::site::Site::X86 && !cli.no_offload;
     Ok((xks::artichoke::Artichoke::open(&o)?, placed))
+}
+
+/// libc's `mmap`, found once past this binary's (`RTLD_NEXT`: under
+/// phi512 a preloaded library could stand between, and must not be
+/// skipped).
+#[cfg(feature = "artichoke")]
+fn next_mmap() -> MmapFn {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    extern "C" {
+        fn dlsym(
+            handle: *mut std::ffi::c_void,
+            name: *const std::ffi::c_char,
+        ) -> *mut std::ffi::c_void;
+    }
+    let mut f = NEXT.load(Ordering::Relaxed);
+    if f == 0 {
+        // RTLD_NEXT is ((void *) -1) in glibc's dlfcn.h.
+        // SAFETY: a NUL-terminated name; dlsym is thread-safe.
+        f = unsafe { dlsym(usize::MAX as *mut std::ffi::c_void, c"mmap".as_ptr()) } as usize;
+        if f == 0 {
+            std::process::abort();
+        }
+        NEXT.store(f, Ordering::Relaxed);
+    }
+    // SAFETY: dlsym returned libc's mmap, which has this signature.
+    unsafe { std::mem::transmute::<usize, MmapFn>(f) }
+}
+
+#[cfg(feature = "artichoke")]
+type MmapFn =
+    unsafe extern "C" fn(*mut std::ffi::c_void, usize, i32, i32, i32, i64) -> *mut std::ffi::c_void;
+
+/// `mmap`, exported from this binary (build.rs) so that libllama's call
+/// resolves here before libc: llama.cpp maps a model with `MAP_POPULATE`
+/// (its `llama_mmap`, prefetch on), which reads the whole file into this
+/// process at load. While the subject loads on an offloaded site
+/// (`artichoke::LAZY_PAGES`), a file mapping loses that flag and its pages
+/// come in as they are used; every other call passes through unchanged.
+/// llama.cpp itself is not modified. See main.md.
+///
+/// # Safety
+/// As libc's `mmap`.
+#[cfg(feature = "artichoke")]
+#[no_mangle]
+pub unsafe extern "C" fn mmap(
+    addr: *mut std::ffi::c_void,
+    len: usize,
+    prot: i32,
+    flags: i32,
+    fd: i32,
+    off: i64,
+) -> *mut std::ffi::c_void {
+    const MAP_POPULATE: i32 = 0x8000;
+    let lazy = fd >= 0 && xks::artichoke::LAZY_PAGES.load(std::sync::atomic::Ordering::SeqCst);
+    let flags = if lazy { flags & !MAP_POPULATE } else { flags };
+    // SAFETY: the caller's arguments, to libc's mmap.
+    unsafe { next_mmap()(addr, len, prot, flags, fd, off) }
 }
 
 fn main() {
@@ -1240,5 +1301,70 @@ mod tests {
         r.rest(&log);
         assert_eq!(r.seen, "xks: site x86\nxks: loading\nerror: x".len());
         std::fs::remove_file(&log).unwrap();
+    }
+
+    /// The resident kilobytes of the mapping at `addr`, from smaps.
+    #[cfg(feature = "artichoke")]
+    fn rss_kb(addr: usize) -> u64 {
+        let smaps = std::fs::read_to_string("/proc/self/smaps").unwrap();
+        let mut here = false;
+        for line in smaps.lines() {
+            if let Some((range, _)) = line.split_once(' ') {
+                if let Some((lo, _)) = range.split_once('-') {
+                    if let Ok(lo) = usize::from_str_radix(lo, 16) {
+                        here = lo == addr;
+                        continue;
+                    }
+                }
+            }
+            if here {
+                if let Some(v) = line.strip_prefix("Rss:") {
+                    return v.trim().trim_end_matches(" kB").trim().parse().unwrap();
+                }
+            }
+        }
+        panic!("no mapping at {addr:#x}");
+    }
+
+    #[test]
+    #[cfg(feature = "artichoke")]
+    fn a_populated_file_mapping_is_left_lazy_only_while_the_subject_loads() {
+        use std::os::fd::AsRawFd;
+        use std::sync::atomic::Ordering;
+        extern "C" {
+            fn munmap(addr: *mut std::ffi::c_void, len: usize) -> i32;
+        }
+        const PROT_READ: i32 = 1;
+        const MAP_PRIVATE: i32 = 2;
+        const MAP_POPULATE: i32 = 0x8000;
+        let len = 4 << 20;
+        let path = std::env::temp_dir().join(format!("xks-lazy-{}", std::process::id()));
+        std::fs::write(&path, vec![7u8; len]).unwrap();
+        let f = std::fs::File::open(&path).unwrap();
+        let map = |lazy: bool| {
+            xks::artichoke::LAZY_PAGES.store(lazy, Ordering::SeqCst);
+            // SAFETY: a read-only private mapping of a file this test owns.
+            let p = unsafe {
+                super::mmap(
+                    std::ptr::null_mut(),
+                    len,
+                    PROT_READ,
+                    MAP_PRIVATE | MAP_POPULATE,
+                    f.as_raw_fd(),
+                    0,
+                )
+            };
+            xks::artichoke::LAZY_PAGES.store(false, Ordering::SeqCst);
+            assert_ne!(p as isize, -1, "mmap failed");
+            let kb = rss_kb(p as usize);
+            // SAFETY: the mapping made just above.
+            unsafe { munmap(p, len) };
+            kb
+        };
+        // As llama.cpp asks, all 4 MiB are read in at once; while the
+        // subject loads lazily, none until touched.
+        assert_eq!(map(false), 4096);
+        assert_eq!(map(true), 0);
+        std::fs::remove_file(&path).unwrap();
     }
 }

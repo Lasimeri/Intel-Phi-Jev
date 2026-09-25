@@ -50,6 +50,10 @@ fn artichoke() {
         println!("cargo:rustc-link-lib=dylib={l}");
     }
     println!("cargo:rustc-link-arg=-Wl,-rpath,{lib}");
+    // main.rs's `mmap` in the dynamic symbol table, so libllama's call
+    // binds to it ahead of libc's (it strips MAP_POPULATE while the
+    // subject loads on an offloaded site).
+    println!("cargo:rustc-link-arg-bins=-Wl,--export-dynamic-symbol=mmap");
     // The directory the CPU variants (libggml-cpu-*.so) are loaded from at
     // run time, unless XKS_BACKEND_DIR names another.
     println!("cargo:rustc-env=XKS_LLAMA_BUILD_DIR={lib}");

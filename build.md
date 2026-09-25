@@ -28,3 +28,9 @@ than the headers, rebuild it before linking against it.
 
 `XKS_LLAMA_BUILD_DIR` is baked into the binary as the default directory for
 CPU variants; `XKS_BACKEND_DIR` overrides it at run time.
+
+The binaries export one symbol of their own, `mmap`
+(`-Wl,--export-dynamic-symbol=mmap`, bins only), so that libllama's
+`mmap` binds to `main.rs`'s before libc's: it strips `MAP_POPULATE`
+while the subject loads on an offloaded site ([`src/main.md`](src/main.md)).
+`nm -D target/release/xks` shows it as `T mmap`.

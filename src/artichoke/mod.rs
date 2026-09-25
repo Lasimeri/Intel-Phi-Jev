@@ -54,6 +54,26 @@ pub struct Options {
     /// Let llama.cpp use flash attention where it would (off on the avx512
     /// site: its tiled loop is one the card cannot yet run, site.md).
     pub flash_attn: bool,
+    /// Map the subject without `MAP_POPULATE`, its pages read in as they
+    /// are used (`LAZY_PAGES`). For the offloaded sites: the rows the cards
+    /// keep are then never all resident at once, and pages no request
+    /// touches are never read in. See mod.md, "Pages read in as used".
+    pub lazy_pages: bool,
+}
+
+/// While set, a file mapping made in this process loses `MAP_POPULATE`:
+/// the `mmap` the xks binary exports ahead of libc's (main.rs) reads it.
+/// Set only while the subject loads (`Options::lazy_pages`), so nothing
+/// else this process maps is changed.
+pub static LAZY_PAGES: AtomicBool = AtomicBool::new(false);
+
+/// Clears `LAZY_PAGES` however the load it was set for ends.
+struct Lazy;
+
+impl Drop for Lazy {
+    fn drop(&mut self) {
+        LAZY_PAGES.store(false, Ordering::SeqCst);
+    }
 }
 
 impl Options {
@@ -72,6 +92,7 @@ impl Options {
             verbose: false,
             repack: false,
             flash_attn: true,
+            lazy_pages: false,
         }
     }
 }
@@ -188,11 +209,16 @@ impl Artichoke {
             ),
             size as f64 / 1e9
         );
+        let lazy = opts.lazy_pages.then(|| {
+            LAZY_PAGES.store(true, Ordering::SeqCst);
+            Lazy
+        });
         let model = unsafe {
             let mut mp = sys::llama_model_default_params();
             mp.use_extra_bufts = opts.repack;
             sys::llama_model_load_from_file(path.as_ptr(), mp)
         };
+        drop(lazy);
         if model.is_null() {
             return Err(format!("could not load {}", opts.gguf.display()));
         }

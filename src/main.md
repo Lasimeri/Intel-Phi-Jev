@@ -136,3 +136,18 @@ Read directly, not through a flag: `XKS_CONFIG` ([`config.md`](config.md)),
 subprojects, [`subproject.md`](subproject.md)), and for `--backend-kind jev`
 `TYPESAFE_API_KEY`, `TYPESAFE_BASE_URL` and `TYPESAFE_DEFAULT_MODEL`
 ([`backend/typesafe.md`](backend/typesafe.md)).
+
+## The exported `mmap`
+
+With the `artichoke` feature the binary defines and exports `mmap`
+(build.rs: `--export-dynamic-symbol=mmap`), which libllama's call binds
+to before libc's. It forwards every call to the next `mmap` in lookup
+order (`dlsym(RTLD_NEXT)`, found once), so a library preloaded ahead of
+libc (libphi512 on the avx512 site) is not skipped, and changes one thing:
+while `artichoke::LAZY_PAGES` is set, which is only while the subject
+loads on an offloaded site, a file mapping (`fd >= 0`) loses
+`MAP_POPULATE`. The whole model is then no longer read into the host at
+load; why and what it measured are in
+[`artichoke/mod.md`](artichoke/mod.md), "Pages read in as used". The
+standard library's own calls (its signal stacks) pass through it too,
+unchanged.
