@@ -86,3 +86,8 @@ and then fail as a 502, which the official SDKs retry.
 
 A template that writes its own BOS (Llama 3's `<|begin_of_text|>`) after
 the tokenizer has added one keeps one.
+
+`n_ubatch` stays 512 (`--ubatch`, `XKS_UBATCH`): on 2026-09-25 the long
+sessions (two cases, 16 questions, the 35B, x86 site) took 87.6 and 77.3 s
+at 512 and 78.6 and 82.5 s at 2048, interleaved; the difference is inside
+this host's drift.
