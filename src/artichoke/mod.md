@@ -46,7 +46,9 @@ variant from the build directory and then `GGML_BACKEND_PATH` (the payload,
 which [`../site.rs`](../site.rs) sets). A build without them
 (`cfg(xks_static_cpu)`, the AVX-512 one) has its CPU backend linked in and
 loads only the payload. The device list is printed at open (`xks: devices:
-CPU` or `Phi, CPU`).
+CPU` or `Phi, CPU`), then `xks: loading NAME (N GB)` before the model
+load, the long step: a detached server's log says what it is doing while
+it loads, and Mechanical Jev's TUI shows that line as a start's progress.
 
 ## Measured
 

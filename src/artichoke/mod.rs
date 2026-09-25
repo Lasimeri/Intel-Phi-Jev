@@ -176,6 +176,18 @@ impl Artichoke {
             eprintln!("xks: devices: {}", names.join(", "));
         });
         let path = CString::new(opts.gguf.as_os_str().as_bytes()).map_err(|e| e.to_string())?;
+        // The long step, said before it starts: a detached server's log
+        // (which Mechanical Jev's TUI shows as a start's progress) is
+        // otherwise silent from the devices line to the listening line.
+        let size = std::fs::metadata(&opts.gguf).map_or(0, |m| m.len());
+        eprintln!(
+            "xks: loading {} ({:.1} GB)",
+            opts.gguf.file_name().map_or_else(
+                || opts.gguf.display().to_string(),
+                |n| n.to_string_lossy().into_owned()
+            ),
+            size as f64 / 1e9
+        );
         let model = unsafe {
             let mut mp = sys::llama_model_default_params();
             mp.use_extra_bufts = opts.repack;
