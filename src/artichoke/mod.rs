@@ -589,6 +589,7 @@ impl Artichoke {
             let mut plan = Vec::new();
             for (k, &n) in single[i..j].iter().enumerate() {
                 let seq = (k + 1) as i32;
+                // The Hologram: every fork holds the whole session.
                 unsafe { sys::llama_memory_seq_cp(mem, 0, seq, -1, -1) };
                 let suffix = &prompts[n][shared..];
                 for (m, &t) in suffix.iter().enumerate() {
@@ -805,6 +806,7 @@ impl Scorer for Artichoke {
 pub const BRANCH_LIMIT: usize = 32_000;
 pub const REQUEST_LIMIT: usize = 64_000;
 
+/// REBAL, the Resonant Energy Balloon: the field around the engine.
 /// Refuse, before any prefill, a request that cannot be read: past
 /// TypeSafe's limits (counted with this subject's tokenizer, template
 /// included), or a fingerprint that with its longest label does not fit

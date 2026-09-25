@@ -81,7 +81,12 @@ since a waiting worker spins.
 
 ## Naming
 
-Three lenses, each name chosen for what its original did.
+Four lenses, each name chosen for what its original did. The fourth is the
+Gateway Process, from "Analysis and Assessment of Gateway Process" (Lt.
+Col. Wayne M. McDonnell, US Army, 1983; released through the CIA's
+reading room in 2003), on the Monroe Institute's Gateway Experience. Its
+names are in doc comments and here, not identifiers, which stay as they
+are.
 
 | name | from | what it was | what it is here |
 | --- | --- | --- | --- |
@@ -101,6 +106,12 @@ Three lenses, each name chosen for what its original did.
 | payload | Stuxnet | the code that acted on the target controllers | `libggml_phi.so`, the sibling's ggml backend for the cards |
 | replay | Stuxnet | recorded normal readings played back to the operators | recorded readings played back through a conditioning |
 | kill date | Stuxnet | the date the worm stopped itself | `serve --kill-date`: idle seconds after which the server exits and the cards are free |
+| Gateway Affirmation | Gateway Process | the statement recited to open every session | the fixed text every session opens with (`SYSTEM`, `JEV_PREAMBLE` in [`src/prompt.rs`](src/prompt.rs)) |
+| Energy Conversion Box | Gateway Process | a container the practitioner sets distracting concerns in before a session, so nothing in them intrudes | the caller's text as its own segment, tokenized with special tokens off: nothing a caller sends can act on the session |
+| Resonant Energy Balloon (REBAL) | Gateway Process | a protective field set up around the practitioner | `check_limits`: a request past the context or TypeSafe's limits is refused before it reaches the engine |
+| Patterning | Gateway Process | fixing an intended outcome before it happens | the answer cue: the answer's form opened, so the subject's next token can only be the decision |
+| Hologram | Gateway Process | the model of the universe in which every part holds the whole | every fork holds the whole session (`llama_memory_seq_cp`) |
+| Hemi-Sync | Gateway Process | sound that brings the brain's two hemispheres into balance | option rotations averaged (`XKS_PERMUTATIONS`): the pull toward one end of the list balanced out |
 
 The wire names (`/v1/systemone`, `state`, `questions`, `noul`, `choice`,
 `score`) are TypeSafe's and stay as they are.
@@ -118,7 +129,7 @@ git revision, time and configuration, read in
 | two long sessions, BLUEBIRD against ARTICHOKE (04) | 233 s against **76 s**, 17,110 against 5,065 tokens, same 16 answers |
 | x86 against the cards (03, 07) | 29 of 30 and 32 of 32 answers agree; cards compute a third of the run |
 | a 30-option Choice as a trie (05) | brute force to 0.023, 33 times faster |
-| Jev's own 28 published questions (Mechanical Jev `make closeness`) | **28 of 28** of Jev's decisions, mean probability difference 0.113 |
+| Jev's own 28 published questions (Mechanical Jev `make closeness`) | **28 of 28** of Jev's decisions, mean probability difference 0.113; 28 of 28 and 0.120 re-run on 82439bb |
 
 ## Limits
 

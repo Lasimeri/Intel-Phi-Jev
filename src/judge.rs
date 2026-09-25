@@ -19,6 +19,7 @@ pub struct JudgeConfig {
     pub calibration: Calibration,
     /// For `choice`: score this many cyclic rotations of the option order and
     /// average the per-key probabilities. 1 = no position-bias averaging.
+    /// Hemi-Sync: the pull toward one side of the list is balanced out.
     pub permutations: usize,
     pub debug: bool,
 }
