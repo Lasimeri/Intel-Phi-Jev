@@ -170,12 +170,45 @@ fn polling(root: &Path, card: u32) -> bool {
         .unwrap_or(false)
 }
 
+/// Whether the card holds what `cfg` asks for: `phi-vpu.sh config` (the
+/// sibling's; "hugepages N" and "worker ARGS") read back and compared. A
+/// sibling without the verb reads as not holding it, and the worker is
+/// restarted, which is always safe.
+fn holds(root: &Path, card: u32, cfg: &WorkerConfig) -> bool {
+    phi_vpu(root, card, &["config"])
+        .stdout(std::process::Stdio::piped())
+        .output()
+        .map(|o| config_matches(&String::from_utf8_lossy(&o.stdout), cfg))
+        .unwrap_or(false)
+}
+
+/// `phi-vpu.sh config`'s output against `cfg`: the reservation equal, and
+/// the worker's arguments (after its `-v`, before its thread count) the
+/// ones xks passes.
+fn config_matches(out: &str, cfg: &WorkerConfig) -> bool {
+    let field = |k: &str| {
+        out.lines()
+            .find_map(|l| l.strip_prefix(k).map(str::trim))
+            .unwrap_or("")
+    };
+    let hugepages_ok = field("hugepages ").parse::<u32>().ok() == Some(cfg.hugepages);
+    let worker: Vec<&str> = field("worker ").split_whitespace().collect();
+    let args: Vec<&str> = match worker.as_slice() {
+        ["-v", rest @ .., _threads] => rest.to_vec(),
+        _ => return false,
+    };
+    hugepages_ok && args == cfg.args.split_whitespace().collect::<Vec<_>>()
+}
+
 /// A worker polling on `card` with `cfg`, restarted when it was started
 /// with anything else (or by something other than xks).
 fn ensure_worker(root: &Path, card: u32, cfg: &WorkerConfig) -> Result<(), String> {
     let mark = marker(card);
     let same = std::fs::read_to_string(&mark).ok().as_deref() == Some(cfg.tag().as_str());
-    if same && polling(root, card) {
+    // The marker says what xks started; the card says what is there now.
+    // Something else (phi512.sh, phi-ggml.sh) may have restarted the worker
+    // since, with another reservation, and the marker would not know.
+    if same && polling(root, card) && holds(root, card, cfg) {
         return Ok(());
     }
     eprintln!("xks: starting the worker on card {card} ({})", cfg.tag());
@@ -386,6 +419,27 @@ fn reexec_avx512() -> Result<Placed, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_worker_is_kept_only_when_the_card_holds_what_xks_asked_for() {
+        let cards = WorkerConfig {
+            hugepages: 2400,
+            args: "-e 0".into(),
+        };
+        assert!(config_matches(
+            "hugepages 2400\nworker -v -e 0 57\n",
+            &cards
+        ));
+        // Restarted by phi512.sh with its defaults, or not running at all.
+        assert!(!config_matches("hugepages 768\nworker -v 57\n", &cards));
+        assert!(!config_matches("hugepages 2400\nworker none\n", &cards));
+        assert!(!config_matches("", &cards));
+        let plain = WorkerConfig {
+            hugepages: 768,
+            args: String::new(),
+        };
+        assert!(config_matches("hugepages 768\nworker -v 57\n", &plain));
+    }
 
     #[test]
     fn a_sibling_is_found_under_either_name_nearest_base_first() {

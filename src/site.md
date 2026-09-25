@@ -85,3 +85,11 @@ the host is untouched):
 The x86 site removes an inherited `GGML_BACKEND_PATH` (with a line saying
 so): set in the shell or a config file, it loaded the payload into the
 reference, and x86 against cards compared the payload with itself.
+
+A worker is kept only when its marker, its polling and the card agree:
+`phi-vpu.sh -c N config` (the sibling's) reports the card's huge-page
+reservation and the running worker's arguments, and `ensure_worker`
+restarts a worker whose reservation or arguments are not the ones xks
+asked for. The marker alone could not see a worker something else had
+restarted since (`phi512.sh` starts one with 768 pages and the seamless
+pool; the cards site wants 2400 and none), and xks would have used it.
