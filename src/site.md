@@ -93,3 +93,11 @@ restarts a worker whose reservation or arguments are not the ones xks
 asked for. The marker alone could not see a worker something else had
 restarted since (`phi512.sh` starts one with 768 pages and the seamless
 pool; the cards site wants 2400 and none), and xks would have used it.
+
+A card counts as up when its host window exists and its daemon accepts a
+connection on the stack's control socket (`$XDG_RUNTIME_DIR/phictl/control.sock`
+for card 0, `phictl/N/control.sock` for card N). The stack never unlinks
+a window, so a card that is down used to count as up: `auto` picked the
+cards site and failed at the worker. A socket file can outlive its daemon
+too, but connecting to it is refused at once, so the check costs nothing
+and needs no ssh.

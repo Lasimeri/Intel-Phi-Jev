@@ -75,8 +75,11 @@ pub fn find_sibling(bases: &[PathBuf], names: &[&str], probe: &str) -> Option<Pa
         .find(|d| d.join(probe).exists())
 }
 
-/// The cards with a host window (`/dev/shm/phi-hostmem` is card 0,
-/// `phi-hostmem-N` card N): the cards that are up.
+/// The cards that are up: a host window (`/dev/shm/phi-hostmem` is card 0,
+/// `phi-hostmem-N` card N) whose card's daemon answers on its control
+/// socket. The stack never unlinks a window, so a card that is down keeps
+/// one, and `auto` used to pick the cards site for it and fail at the
+/// worker; a daemon that is not running refuses the connection at once.
 pub fn card_windows() -> Vec<u32> {
     let mut cards = Vec::new();
     if Path::new("/dev/shm/phi-hostmem").exists() {
@@ -95,7 +98,28 @@ pub fn card_windows() -> Vec<u32> {
     }
     cards.sort_unstable();
     cards.dedup();
+    cards.retain(|&c| daemon_answers(c));
     cards
+}
+
+/// The stack's control socket for `card` (its `phi-env.sh`: the runtime
+/// directory's `phictl/control.sock` for card 0, `phictl/N/control.sock`
+/// for card N).
+pub fn control_socket(card: u32) -> PathBuf {
+    let run = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
+        .join("phictl");
+    if card == 0 {
+        run.join("control.sock")
+    } else {
+        run.join(card.to_string()).join("control.sock")
+    }
+}
+
+/// Whether `card`'s daemon accepts a connection on its control socket.
+fn daemon_answers(card: u32) -> bool {
+    std::os::unix::net::UnixStream::connect(control_socket(card)).is_ok()
 }
 
 pub fn resolve(requested: &str) -> Result<Site, String> {
@@ -419,6 +443,21 @@ fn reexec_avx512() -> Result<Placed, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_stale_control_socket_does_not_count_as_a_card() {
+        // A socket file with nothing listening, as a stopped daemon leaves.
+        let dir = std::env::temp_dir().join(format!("xks-sock-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("control.sock");
+        drop(std::os::unix::net::UnixListener::bind(&path).unwrap());
+        assert!(path.exists());
+        assert!(std::os::unix::net::UnixStream::connect(&path).is_err());
+        // And one that is listening does.
+        let _live = std::os::unix::net::UnixListener::bind(dir.join("live.sock")).unwrap();
+        assert!(std::os::unix::net::UnixStream::connect(dir.join("live.sock")).is_ok());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn a_worker_is_kept_only_when_the_card_holds_what_xks_asked_for() {
