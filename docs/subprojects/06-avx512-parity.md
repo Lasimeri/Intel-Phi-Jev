@@ -22,3 +22,17 @@ the dense 0.5B:
 
 All four are the sibling co-processor's (Intel-Phi-AVX512) to move; the
 site in [`site.rs`](../../src/site.md) is ready when they do.
+
+## Since then, on the sibling's side (2026-09-25)
+
+Intel-Phi-AVX512's review of the transparent path
+([its record](https://github.com/Lasimeri/Intel-Phi-AVX512/blob/main/docs/results/2026-09-25-review-transparent-path.md))
+found a candidate cause for the flash attention fault: the thunk area was
+unreserved address space inside a 2 MiB chunk the card maps without
+fetching. It is now a whole reserved chunk. Whether that was the fault is
+unproven: the test that failed takes longer than the ten-minute budget and
+has not been re-run. The same day the path's fetch and write-back were
+staged through a huge page (about 1.7 to 2.4 times faster at a million
+elements), which shortens each region but not the round trip per region
+that the speed item above is about. `vpaddb` and the other byte-lane forms
+are still not in the translator.

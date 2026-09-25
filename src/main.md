@@ -30,3 +30,41 @@ environment variable, which is how `xks.conf` sets them.
 and reaps its child while it waits: a child that dies at startup is
 reported at once (unreaped, its `/proc` entry outlived it and the wait ran
 its full 900 s).
+
+## Environment
+
+Every global flag and `serve`'s have a variable (clap's `env`), which is
+how `xks.conf` and `xks.local.conf` set them; a flag on the command line
+wins over both.
+
+| variable | flag | default |
+| --- | --- | --- |
+| `XKS_SUBJECT` | `--subject` (`--gguf`) | none; `xks.conf` names one |
+| `XKS_CTX` | `--ctx` | 16384 |
+| `XKS_FORKS` | `--forks` | 15 |
+| `XKS_BATCH` | `--batch` | 2048 |
+| `XKS_UBATCH` | `--ubatch` | 512 (2048 measured, no difference: [`artichoke/mod.md`](artichoke/mod.md)) |
+| `XKS_THREADS` | `--threads` | 12 with the payload loaded, else 16 |
+| `XKS_REPACK` | `--repack` | only without the payload |
+| `XKS_SITE` | `--site` | `auto` |
+| `XKS_BACKEND_KIND` | `--backend-kind` | `artichoke` |
+| `XKS_BACKEND_URL` | `--backend` | `http://127.0.0.1:8089` |
+| `XKS_MODEL` | `--model` (openai) | none |
+| `XKS_API_KEY` | named by `--api-key-env` (openai) | |
+| `XKS_EXTRA` | `--extra` (openai) | none |
+| `XKS_LAYOUT` | `--layout` | `letters` |
+| `XKS_TEMPLATE` | `--template` | `chatml` |
+| `XKS_CONDITIONING` | `--conditioning` (`--calibration`) | none |
+| `XKS_PERMUTATIONS` | `--permutations` | 1 (`xks.conf` sets 3) |
+| `XKS_BIND` | `serve --bind` | `127.0.0.1:8090` |
+| `XKS_API_KEYS` | `serve --api-keys` | none |
+| `XKS_KILL_DATE` | `serve --kill-date` | 0 (never) |
+
+Read directly, not through a flag: `XKS_CONFIG` ([`config.md`](config.md)),
+`XKS_BACKEND_DIR` (another llama.cpp build's libraries, else the one
+`build.rs` found, [`../build.md`](../build.md)), `XKS_AVX512_BIN` and
+`XKS_SITE_INNER` ([`site.md`](site.md)), `PHI_AVX512_ROOT` (the sibling),
+`XKS_SUBJECT_SMALL`, `XKS_LLAMA_SERVER` and `XKS_BLUEBIRD_PORT` (the
+subprojects, [`subproject.md`](subproject.md)), and for `--backend-kind jev`
+`TYPESAFE_API_KEY`, `TYPESAFE_BASE_URL` and `TYPESAFE_DEFAULT_MODEL`
+([`backend/typesafe.md`](backend/typesafe.md)).

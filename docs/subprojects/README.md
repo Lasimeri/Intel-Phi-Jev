@@ -6,15 +6,15 @@ Each experiment is one command, `xks subproject run NN` (all of them:
 configuration and every measured value, or why it did not finish. The pages
 here read those records.
 
-| id | page |
-| --- | --- |
-| 01 | [BLUEBIRD baseline](01-bluebird-baseline.md) |
-| 02 | [Polygraph](02-polygraph.md) |
-| 03 | [x86 against the cards](03-dev-eval-sites.md) |
-| 04 | [Long sessions, BLUEBIRD against ARTICHOKE](04-long-sessions.md) |
-| 05 | [The 30-option trie](05-wide-choice-trie.md) |
-| 06 | [The avx512 site](06-avx512-parity.md) (run by name only) |
-| 07 | [Long sessions on the cards](07-long-sessions-cards.md) |
+| id | page | latest record |
+| --- | --- | --- |
+| 01 | [BLUEBIRD baseline](01-bluebird-baseline.md) | `6f944a0`, 2026-09-24 |
+| 02 | [Polygraph](02-polygraph.md) | `6f944a0`, 2026-09-24 |
+| 03 | [x86 against the cards](03-dev-eval-sites.md) | `6f944a0`, 2026-09-24 |
+| 04 | [Long sessions, BLUEBIRD against ARTICHOKE](04-long-sessions.md) | `6f944a0`, 2026-09-24 |
+| 05 | [The 30-option trie](05-wide-choice-trie.md) | `6f944a0`, 2026-09-24 |
+| 06 | [The avx512 site](06-avx512-parity.md) (run by name only) | none: it does not finish inside the budget |
+| 07 | [Long sessions on the cards](07-long-sessions-cards.md) | `98980ec`, 2026-09-25 |
 
 ## Why every record is kept
 

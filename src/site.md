@@ -6,7 +6,8 @@
 | `cards` | x86-64 | yes, offloaded | 2400 huge pages, `-e 0` (no seamless pool) | 12 | auto |
 | `avx512` | AVX-512 (`build-avx512`) under phi512 | yes, on every card but 0 | card 0: phi512 only (768 huge pages with the seamless pool); others as `cards` | 1 | off |
 
-`auto` is `cards` when `/dev/shm/phi-hostmem*` exists (a card is up), else
+`auto` is `cards` when a card is up (`card_windows`: its
+`/dev/shm/phi-hostmem*` window exists and its daemon answers, below), else
 `x86`.
 
 ## Finding the sibling
@@ -46,7 +47,9 @@ other, and `phi-vpu.sh` does not restart a polling worker, so `xks` records
 the configuration it started each worker with
 (`$XDG_RUNTIME_DIR/xks/worker-N`) and restarts a worker whose record differs
 or is missing. `release` stops the workers and returns the huge pages
-(`nr_hugepages` to 0): 4.7 GiB per card.
+(`nr_hugepages` to 0): 4.7 GiB per card at the cards site's 2400. `xks
+stop` releases only the cards `xks_workers` names (a marker says xks
+started their worker); `xks release` takes every card that is up.
 
 One process at a time may hold the cards: the payload frees every card's
 uploads when it opens, so a second process would pull the first one's rows
@@ -75,7 +78,10 @@ the host is untouched):
   `vmovups (%rax)` loop, `rax` advancing 256 bytes an iteration) touched
   memory the process never mapped, after five minutes of regions that ran.
   The planner's reach for that loop overshoots; the site runs with flash
-  attention off to route around it.
+  attention off to route around it. (2026-09-25: the sibling found a
+  candidate cause, an unreserved thunk area inside a chunk the card maps
+  without fetching, and fixed it; not re-run, since the test takes longer
+  than the ten-minute budget. [Subproject 06](../docs/subprojects/06-avx512-parity.md).)
 - card 0 serving phi512's regions and the payload's multiplies at once:
   after 32 minutes a multiply got no answer within 60 s. The one host
   thread waits on a card's multiply while its own AVX-512 region queues

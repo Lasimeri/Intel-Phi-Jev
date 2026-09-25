@@ -22,7 +22,7 @@ readings after the fact instead.
 make build          # xks against llama.cpp's x86-64 build, and its AVX-512 build when present
 make serve          # background server, subject and site from xks.conf
 curl -s localhost:8090/v1/systemone -d @examples/query.json | jq .
-make stop           # stop it and release the cards' huge pages
+make stop           # stop it and release the huge pages of the cards xks started
 make subprojects    # re-run every experiment, records in docs/subprojects/results/
 make check          # docs, format, lint, build, tests
 ```
@@ -67,7 +67,7 @@ since a waiting worker spins.
 
 | command | does |
 | --- | --- |
-| `xks serve [--detach] [--kill-date S]` | the Jev endpoint; `xks stop` ends a detached one and releases the cards |
+| `xks serve [--detach] [--kill-date S]` | the Jev endpoint; `xks stop` ends a detached one and releases the cards whose workers xks started |
 | `xks query --file req.json` | one request; `--compare` also asks the hosted Jev (needs `TYPESAFE_API_KEY`) |
 | `xks mcp` | an MCP server over stdio, one tool, `judge` |
 | `xks eval cases.jsonl [--rows R]` | accuracy, Brier, ECE, coverage, latency on labelled cases |
@@ -150,7 +150,7 @@ git revision, time and configuration, read in
 | --- | --- |
 | the fork's copy, recurrent state included (02) | bit-exact (0.000) |
 | two long sessions, BLUEBIRD against ARTICHOKE (04) | 233 s against **76 s**, 17,110 against 5,065 tokens, same 16 answers |
-| x86 against the cards (03, 07) | 29 of 30 and 32 of 32 answers agree; cards compute a third of the run |
+| x86 against the cards (03, 07) | 29 of 30 (mean difference 0.028) and 32 of 32 (0.006, on `98980ec`) answers agree; each card computes for a third of the run |
 | a 30-option Choice as a trie (05) | brute force to 0.023, 33 times faster |
 | Jev's own 28 published questions (Mechanical Jev `make closeness`) | **28 of 28** of Jev's decisions, mean probability difference 0.113; 28 of 28 and 0.120 re-run on 82439bb |
 
@@ -162,7 +162,10 @@ git revision, time and configuration, read in
   keeps most of its arithmetic on the host.
 - The `avx512` site is correct but slow (each AVX-512 region is a round
   trip to the card), and some AVX-512 forms are not yet in the card's
-  instruction table (byte lanes, `vpaddb`, stop a q4_0 subject).
+  instruction table (byte lanes, `vpaddb`, stop a q4_0 subject); it runs
+  with flash attention off, whose fault has a candidate fix on the
+  sibling's side not yet re-run
+  ([subproject 06](docs/subprojects/06-avx512-parity.md)).
 - The 35B's readings move by up to 0.8 in label log-probability with how
   the prompt is cut into decodes (a dense 0.5B moves 0.045): a noise floor
   on how finely its probabilities can be read.
