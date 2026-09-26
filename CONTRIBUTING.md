@@ -54,7 +54,9 @@ what differs is said where it applies.
   `make check`).
 - The interfaces Mechanical-Jev consumes keep working across changes:
   `xks serve --detach --bind`, `xks stop`, `target/release/xks`, `/health`,
-  `/v1/models` and the System One wire format. Add, do not rename; when
+  `/v1/models`, the System One wire format, and `xks doctor [--fix]
+  [--prefix P]` (its text relayed as it is, exit 0 ready, 1 not). Add, do
+  not rename; when
   one must change, change its consumer in the same session.
 
 ## Git
