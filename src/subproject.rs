@@ -51,7 +51,7 @@ pub const ALL: &[Subproject] = &[
     Subproject {
         id: "02",
         name: "polygraph",
-        what: "The fork read three ways (forked, split, control) on the 35B, the copy isolated with one fork, and a dense 0.5B as the noise floor",
+        what: "The fork read three ways (forked, split, control) on the 35B, the copy isolated with one fork, and the small subject as a second floor",
         in_all: true,
         cards: false,
         run: s02_polygraph,
@@ -83,7 +83,7 @@ pub const ALL: &[Subproject] = &[
     Subproject {
         id: "06",
         name: "avx512-parity",
-        what: "The AVX-512 build under phi512 (card 0) with the payload (card 1) against the x86 reference, dense 0.5B, one question",
+        what: "The AVX-512 build under phi512 (card 0) with the payload (card 1) against the x86 reference, the small subject, one question",
         in_all: false,
         cards: true,
         run: s06_avx512,

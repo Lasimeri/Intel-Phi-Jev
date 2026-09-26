@@ -13,17 +13,20 @@ UTC time it started, how long it took, the git revision and whether the
 tree was dirty, the host, and every child's JSON output. The report that
 reads a record is `docs/subprojects/NN-*.md` (04's record is
 `04-long-sessions-x86.json`, its page `04-long-sessions.md`). The subjects
-are `XKS_SUBJECT` and `XKS_SUBJECT_SMALL` (the dense 0.5B), both from
-`xks.conf`.
+are `XKS_SUBJECT` and `XKS_SUBJECT_SMALL`, both from `xks.conf`. The
+small one is Qwen3.8 2B Q8_0 (empero-ai's distillation, a hybrid like the
+35B: three Gated DeltaNet layers to each full-attention one) since
+2026-09-26, the user's choice; before, the dense Qwen2.5 0.5B f16, which
+the records up to then name.
 
 | id | name | compares |
 | --- | --- | --- |
 | 01 | bluebird-baseline | stock llama-server (x86, no repack) on the first 10 dev_tasks cases |
-| 02 | polygraph | forked / split / control on the 35B, one fork (the copy alone), and the dense 0.5B floor |
+| 02 | polygraph | forked / split / control on the 35B, one fork (the copy alone), and the small subject's floor |
 | 03 | dev-eval-sites | `x86` against `cards` on the first 10 dev_tasks cases, corroborated |
 | 04 | long-sessions-x86 | BLUEBIRD against ARTICHOKE on two long real sessions, eight questions each, this host alone |
 | 05 | wide-choice-trie | 30 options, trie against brute force |
-| 06 | avx512-parity | `avx512` (card 0 regions, card 1 the payload) against `x86`, dense 0.5B, one question; run by name only (`in_all` false: it does not finish inside the budget) |
+| 06 | avx512-parity | `avx512` (card 0 regions, card 1 the payload) against `x86`, the small subject, one question; run by name only (`in_all` false: it does not finish inside the budget) |
 | 07 | long-sessions-cards | all four long sessions on `x86` and on `cards`, the payload's ledger, corroborated |
 
 Each subproject has `BUDGET`, 600 s: its children share one deadline, and
