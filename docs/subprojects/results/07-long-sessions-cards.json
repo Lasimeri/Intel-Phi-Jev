@@ -3,10 +3,10 @@
   "name": "long-sessions-cards",
   "what": "All four long sessions on the x86 site and on the cards, the payload's ledger, corroborated",
   "outcome": "finished",
-  "utc": "2026-09-25T10:38:30Z",
-  "seconds": 381.6,
+  "utc": "2026-09-26T00:43:52Z",
+  "seconds": 355.0,
   "budget_seconds": 600,
-  "git": "98980ec",
+  "git": "3ce3124",
   "dirty": false,
   "host": "GMNGDSKTP",
   "results": {
@@ -19,8 +19,8 @@
       "ece": 0.041631311032845675,
       "mean_confidence": 0.9285781938338276,
       "coverage_at_5pct_error": 1.0,
-      "latency_p50_ms": 3053.907377875,
-      "latency_p95_ms": 9161.722133625,
+      "latency_p50_ms": 2786.746569785714,
+      "latency_p95_ms": 8360.239709357142,
       "prompt_tokens_evaluated": 10569,
       "prompt_tokens_cached": 86913,
       "by_kind": {
@@ -31,8 +31,9 @@
       "subject": "artichoke/Qwen3.8-35B-A3B-Q4_K_M",
       "site": "x86",
       "cases": 4,
-      "wall_s": 168.71,
-      "per_case_s": 42.18
+      "wall_s": 153.02,
+      "per_case_s": 38.25,
+      "host_peak_gib": 21.75
     },
     "artichoke_cards": {
       "questions": 32,
@@ -42,8 +43,8 @@
       "ece": 0.04469177208311938,
       "mean_confidence": 0.9229694036884118,
       "coverage_at_5pct_error": 1.0,
-      "latency_p50_ms": 3424.6598739375,
-      "latency_p95_ms": 10273.9796218125,
+      "latency_p50_ms": 3555.1549988125003,
+      "latency_p95_ms": 10665.4649964375,
       "prompt_tokens_evaluated": 10569,
       "prompt_tokens_cached": 86913,
       "by_kind": {
@@ -54,30 +55,31 @@
       "subject": "artichoke/Qwen3.8-35B-A3B-Q4_K_M",
       "site": "cards",
       "cases": 4,
-      "wall_s": 188.35,
-      "per_case_s": 47.09
+      "wall_s": 189.25,
+      "per_case_s": 47.31,
+      "host_peak_gib": 13.26
     },
     "ledger": {
       "multiplies": 25522,
       "with_cards": 6240,
-      "host_part_ms": 98319.49300000076,
-      "host_wait_ms": 44203.02099999981,
+      "host_part_ms": 101443.753000002,
+      "host_wait_ms": 42840.66599999971,
       "cards": {
         "0": {
           "multiplies": 6240,
           "rows": 2396160,
-          "total_ms": 71069.20100000002,
-          "compute_ms": 61244.84600000012,
-          "pull_ms": 3485.152000000006,
-          "push_ms": 3605.995000000004
+          "total_ms": 71129.87499999996,
+          "compute_ms": 61240.45900000017,
+          "pull_ms": 3508.7869999999893,
+          "push_ms": 3641.672000000002
         },
         "1": {
           "multiplies": 6240,
           "rows": 2396160,
-          "total_ms": 77358.0290000001,
-          "compute_ms": 61531.1379999999,
-          "pull_ms": 6183.070999999977,
-          "push_ms": 6825.94100000001
+          "total_ms": 76804.1790000001,
+          "compute_ms": 61003.20700000006,
+          "pull_ms": 6142.72799999999,
+          "push_ms": 6811.7919999999995
         }
       }
     },

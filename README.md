@@ -159,7 +159,9 @@ git revision, time and configuration, read in
 | --- | --- |
 | the fork's copy, recurrent state included (02) | bit-exact (0.000) |
 | two long sessions, BLUEBIRD against ARTICHOKE (04) | 233 s against **76 s**, 17,110 against 5,065 tokens, same 16 answers |
-| x86 against the cards (03, 07) | 29 of 30 (mean difference 0.028) and 32 of 32 (0.006, on `98980ec`) answers agree; each card computes for a third of the run |
+| x86 against the cards (03, 07) | 29 of 30 (mean difference 0.024) and 32 of 32 (0.006) answers agree, on `3ce3124`; each card computes for a third of the run |
+| host memory at peak, x86 against the cards (03, 07, `host_peak_gib`) | 20.0 and 21.8 GiB against **12.5 and 13.3 GiB**: the cards hold 41 % of the weights, and the subject's pages are read in as used |
+| wall, x86 against the cards (03, 07) | 83 and 153 s against 95 and 189 s: on this subject the cards save host memory, not time |
 | a 30-option Choice as a trie (05) | brute force to 0.023, 33 times faster |
 | Jev's own 28 published questions (Mechanical Jev `make closeness`) | **28 of 28** of Jev's decisions, mean probability difference 0.113; 28 of 28 and 0.120 re-run on 82439bb |
 
