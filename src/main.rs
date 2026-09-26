@@ -854,6 +854,7 @@ fn run() -> Result<(), String> {
             // Holding the cards: say where to ask instead (site.md).
             #[cfg(feature = "artichoke")]
             xks::site::note_serving(&bind);
+            let used = site_cards.clone();
             serve(
                 judge,
                 ServerConfig {
@@ -863,7 +864,10 @@ fn run() -> Result<(), String> {
                     site: site_name.into(),
                     cards: site_cards,
                 },
-            )
+            )?;
+            // Only the kill date ends `serve` without an error.
+            retire(&used);
+            Ok(())
         }
         Cmd::Query { compare, .. } => {
             // Read before the site was prepared; in the avx512 site's
@@ -936,6 +940,36 @@ fn run() -> Result<(), String> {
         // Handled first thing in run().
         #[cfg(feature = "artichoke")]
         Cmd::Doctor { .. } => Ok(()),
+    }
+}
+
+/// A server past its kill date gives back what `xks stop` would: the
+/// workers of the cards it used (`used`, empty on the x86 site, which
+/// leaves the cards to whoever has them) and its pid file when it is this
+/// process's. The engine is already dropped: `serve` owned it.
+fn retire(used: &[u32]) {
+    #[cfg(feature = "artichoke")]
+    {
+        let cards: Vec<u32> = xks::site::xks_workers()
+            .into_iter()
+            .filter(|c| used.contains(c))
+            .collect();
+        if !cards.is_empty() {
+            match xks::site::release(&cards) {
+                Ok(()) => eprintln!("xks: card workers stopped, huge pages released on {cards:?}"),
+                Err(e) => eprintln!("xks: the cards were not released: {e} (xks release)"),
+            }
+        }
+    }
+    #[cfg(not(feature = "artichoke"))]
+    let _ = used;
+    let pidfile = run_dir().join("serve.pid");
+    let ours = std::fs::read_to_string(&pidfile)
+        .ok()
+        .and_then(|s| s.trim().parse::<u32>().ok())
+        == Some(std::process::id());
+    if ours {
+        let _ = std::fs::remove_file(pidfile);
     }
 }
 

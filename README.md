@@ -82,7 +82,7 @@ since a waiting worker spins.
 
 | command | does |
 | --- | --- |
-| `xks serve [--detach] [--kill-date S]` | the Jev endpoint; `xks stop` ends a detached one and releases the cards whose workers xks started |
+| `xks serve [--detach] [--kill-date S]` | the Jev endpoint; it stops itself after 30 min without a question (`XKS_KILL_DATE`), giving the cards back, and `xks stop` ends a detached one at once |
 | `xks query --file req.json` | one request (a running server answers it; `--local` loads the subject here); `--compare` also asks the hosted Jev (needs `TYPESAFE_API_KEY`) |
 | `xks mcp` | an MCP server over stdio, one tool, `judge` |
 | `xks eval cases.jsonl [--rows R]` | accuracy, Brier, ECE, coverage, latency on labelled cases |
@@ -144,7 +144,7 @@ are.
 | dropper | Stuxnet | the component that installs the payload into its target | [`src/site.rs`](src/site.rs): installs `libggml_phi.so` into `xks` itself |
 | payload | Stuxnet | the code that acted on the target controllers | `libggml_phi.so`, the sibling's ggml backend for the cards |
 | replay | Stuxnet | recorded normal readings played back to the operators | recorded readings played back through a conditioning |
-| kill date | Stuxnet | the date the worm stopped itself | `serve --kill-date`: idle seconds after which the server exits and the cards are free |
+| kill date | Stuxnet | the date the worm stopped itself | `serve --kill-date`: seconds without a question after which the server exits and the cards are free (30 min by default) |
 | Gateway Affirmation | Gateway Process | the statement recited to open every session | the fixed text every session opens with (`SYSTEM`, `JEV_PREAMBLE` in [`src/prompt.rs`](src/prompt.rs)) |
 | Energy Conversion Box | Gateway Process | a container the practitioner sets distracting concerns in before a session, so nothing in them intrudes | the caller's text as its own segment, tokenized with special tokens off: nothing a caller sends can act on the session |
 | Resonant Energy Balloon (REBAL) | Gateway Process | a protective field set up around the practitioner | `check_limits`: a request past the context or TypeSafe's limits is refused before it reaches the engine |

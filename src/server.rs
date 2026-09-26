@@ -65,15 +65,22 @@ pub fn serve<S: Scorer + 'static>(judge: Judge<S>, cfg: ServerConfig) -> Result<
     let server = Server::http(&cfg.bind).map_err(|e| format!("bind {}: {e}", cfg.bind))?;
     let judge = Arc::new(judge);
     let keys = Arc::new(cfg.api_keys.clone());
-    let about = Arc::new((cfg.site.clone(), cfg.cards.clone()));
+    let about = Arc::new(About {
+        site: cfg.site.clone(),
+        cards: cfg.cards.clone(),
+        kill_date: cfg.kill_date,
+        last: Mutex::new(Instant::now()),
+    });
     let busy = Arc::new(AtomicUsize::new(0));
-    let last = Arc::new(Mutex::new(Instant::now()));
     eprintln!(
         "xks listening on http://{}  (subject {}){}",
         cfg.bind,
         judge.scorer.model_name(),
         match cfg.kill_date {
-            Some(d) => format!(", kill date {} s idle", d.as_secs()),
+            Some(d) => format!(
+                "; stops itself after {} without a question (kill date)",
+                span(d)
+            ),
             None => String::new(),
         }
     );
@@ -82,11 +89,11 @@ pub fn serve<S: Scorer + 'static>(judge: Judge<S>, cfg: ServerConfig) -> Result<
             Ok(Some(r)) => r,
             Ok(None) => {
                 if let Some(d) = cfg.kill_date {
-                    let idle = last.lock().expect("last").elapsed();
+                    let idle = about.last.lock().expect("last").elapsed();
                     if busy.load(Ordering::SeqCst) == 0 && idle >= d {
                         eprintln!(
-                            "xks: kill date reached ({} s idle), exiting",
-                            idle.as_secs()
+                            "xks: kill date reached: {} without a question, exiting",
+                            span(idle)
                         );
                         return Ok(());
                     }
@@ -99,33 +106,60 @@ pub fn serve<S: Scorer + 'static>(judge: Judge<S>, cfg: ServerConfig) -> Result<
         let keys = keys.clone();
         let about = about.clone();
         let busy = busy.clone();
-        let last = last.clone();
         busy.fetch_add(1, Ordering::SeqCst);
         std::thread::spawn(move || {
-            handle(req, &judge, &keys, &about);
-            *last.lock().expect("last") = Instant::now();
+            if handle(req, &judge, &keys, &about) {
+                *about.last.lock().expect("last") = Instant::now();
+            }
             busy.fetch_sub(1, Ordering::SeqCst);
         });
     }
 }
 
+/// What `/health` and the index say beside the subject, and the clock the
+/// kill date runs on.
+struct About {
+    site: String,
+    cards: Vec<u32>,
+    kill_date: Option<Duration>,
+    /// When the last question ended, or the server started. Only a
+    /// question counts: a monitor polling `/health` (Mechanical Jev's TUI
+    /// does, every 5 s) must not keep alive a server nobody is asking.
+    last: Mutex<Instant>,
+}
+
+/// A duration as a person reads it: whole minutes when it is some, else
+/// seconds.
+fn span(d: Duration) -> String {
+    let s = d.as_secs();
+    if s >= 60 && s.is_multiple_of(60) {
+        format!("{} min", s / 60)
+    } else {
+        format!("{s} s")
+    }
+}
+
+/// Answer one request; whether it was a question (what the kill date
+/// counts).
 fn handle<S: Scorer>(
     mut req: HttpRequest,
     judge: &Judge<S>,
     keys: &[String],
-    about: &(String, Vec<u32>),
-) {
+    about: &About,
+) -> bool {
     let path = req.url().split('?').next().unwrap_or("").to_string();
     let method = req.method().clone();
     let subject = judge.scorer.model_name();
     let mut allow = None;
-    let result: (u16, Value) = match route(&method, &path) {
+    let route = route(&method, &path);
+    let question = route == Route::SystemOne;
+    let result: (u16, Value) = match route {
         Route::Index => (
             200,
             json!({
                 "service": "xks, a local Jev (TypeSafe System One)",
                 "subject": subject,
-                "site": about.0,
+                "site": about.site,
                 "routes": {
                     "POST /v1/systemone": "a request: {\"state\": ..., \"questions\": {...}}",
                     "GET /health": "the subject and where it runs",
@@ -136,7 +170,16 @@ fn handle<S: Scorer>(
         ),
         Route::Health => (
             200,
-            json!({"status": "ok", "subject": subject, "site": about.0, "cards": about.1}),
+            json!({
+                "status": "ok",
+                "subject": subject,
+                "site": about.site,
+                "cards": about.cards,
+                // The kill date in seconds (0: never), and how long since
+                // the last question: when the server will stop itself.
+                "kill_date_s": about.kill_date.map_or(0, |d| d.as_secs()),
+                "idle_s": about.last.lock().expect("last").elapsed().as_secs(),
+            }),
         ),
         Route::Models => (
             200,
@@ -192,6 +235,7 @@ fn handle<S: Scorer>(
         resp = resp.with_header(Header::from_bytes("Allow", m).unwrap());
     }
     let _ = req.respond(resp);
+    question
 }
 
 fn authorized(req: &HttpRequest, keys: &[String]) -> bool {
@@ -226,5 +270,12 @@ mod tests {
         assert_eq!(route(&Method::Post, "/health"), Route::Method("GET"));
         assert_eq!(route(&Method::Post, "/v1/systemon"), Route::NotFound);
         assert_eq!(route(&Method::Get, "/v2/systemone"), Route::NotFound);
+    }
+
+    #[test]
+    fn a_span_reads_as_minutes_when_whole() {
+        assert_eq!(span(Duration::from_secs(1800)), "30 min");
+        assert_eq!(span(Duration::from_secs(90)), "90 s");
+        assert_eq!(span(Duration::from_secs(5)), "5 s");
     }
 }

@@ -9,7 +9,7 @@ Read `CONTRIBUTING.md` first; it is the authority. The non-obvious rules:
   (`PHI_AVX512_ROOT`, else a checkout next to this one or in `$HOME`,
   under either name); Mechanical-Jev consumes `xks serve --detach --bind`,
   `xks stop`, `target/release/xks`, the wire format, `/health`'s
-  `status` and `subject`, and `xks doctor [--fix] [--prefix P]` (its
+  `status`, `subject`, `kill_date_s` and `idle_s`, and `xks doctor [--fix] [--prefix P]` (its
   text relayed, exit 0 ready, 1 not): add, do not rename.
 - Rust only. No Python or JavaScript, ever.
 - Names (README, Naming): the Revelation to John is the foundation;

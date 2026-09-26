@@ -21,6 +21,9 @@ takes every card. Before 2026-09-24 `stop` released every card that was
 up, even after a server that ran on the x86 site. Neither touches a
 worker while another process holds the cards lock ([`site.md`](site.md)):
 `stop` leaves them running and says who is using them, `release` refuses.
+A server past its kill date does the same as `stop` for itself (`retire`,
+[`server.md`](server.md)): the workers of the cards it used released, its
+pid file removed when it is its own.
 
 `eval` adds `subject`, `site`, `cases`, `wall_s` and `per_case_s` to the
 metrics, so every record says what produced it, and (from 2026-09-25)
@@ -128,7 +131,7 @@ wins over both.
 | `XKS_PERMUTATIONS` | `--permutations` | 1 (`xks.conf` sets 3) |
 | `XKS_BIND` | `serve --bind`; where `query` looks for a server | `127.0.0.1:8090` |
 | `XKS_API_KEYS` | `serve --api-keys` | none |
-| `XKS_KILL_DATE` | `serve --kill-date` | 0 (never) |
+| `XKS_KILL_DATE` | `serve --kill-date` | 0 (never); `xks.conf` sets 1800 (30 min without a question) |
 
 Read directly, not through a flag: `XKS_CONFIG` ([`config.md`](config.md)),
 `XKS_BACKEND_DIR` (another llama.cpp build's libraries, else the one
