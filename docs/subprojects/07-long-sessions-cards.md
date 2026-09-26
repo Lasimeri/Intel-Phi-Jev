@@ -2,17 +2,20 @@
 
 `xks subproject run 07`. Record:
 [`results/07-long-sessions-cards.json`](results/07-long-sessions-cards.json)
-(git `98980ec`, 2026-09-25T10:38:30Z, clean tree, 382 s).
+(git `3ce3124`, 2026-09-26T00:43:52Z, clean tree, 355 s).
 
 **Question:** all four long sessions (32 questions) on the x86 site and on
-the cards: do they agree, and what did the cards compute?
+the cards: do they agree, what did the cards compute, and what did each
+site cost the host?
 
-| site | accuracy | wall |
-| --- | --- | --- |
-| x86 | 32 of 32 | 168.7 s |
-| cards | 32 of 32 | 188.4 s |
+| site | accuracy | wall | host memory at peak |
+| --- | --- | --- | --- |
+| x86 | 32 of 32 | 153.0 s | 21.75 GiB |
+| cards | 32 of 32 | 189.3 s | **13.26 GiB** |
 
-All 32 answers agree, mean probability difference 0.006 (largest 0.060).
+All 32 answers agree, mean probability difference 0.006 (largest 0.060):
+the same to the last digit as the record before (98980ec), so reading
+the subject's pages in as they are used (e2be26e) changed no reading.
 
 The payload's ledger ([`ledger.rs`](../../src/ledger.md)) for the cards run:
 
@@ -20,17 +23,24 @@ The payload's ledger ([`ledger.rs`](../../src/ledger.md)) for the cards run:
 | --- | --- |
 | multiplies through the payload | 25,522 |
 | of them with rows on the cards | 6,240 |
-| each card's vector compute | 61.2 s and 61.5 s of 188.4 s |
-| the host's own rows | 98.3 s |
-| the host waiting for the cards | 44.2 s |
+| each card's vector compute | 61.2 s and 61.0 s of 189.3 s |
+| the host's own rows | 101.4 s |
+| the host waiting for the cards | 42.8 s |
 
 Each card's 57 cores computed for a third of the run; the cards hold about
-41 percent of the 35B's weights (4.36 GB each of 21.7 GB, the budget now
+41 percent of the 35B's weights (4.36 GB each of 21.7 GB, the budget
 counted in the whole 2 MiB pages the card allocates), which bounds their
-share. The 44 s the host spent waiting is why the cards site is slower
-than x86 for this subject at Q4_K_M.
+share. The 43 s the host spent waiting is why the cards site is slower
+than x86 for this subject at Q4_K_M; what it saves is host memory, 8.5 GiB
+at the peak (`host_peak_gib`, the eval process's `VmHWM`). The x86 wall
+moved from 168.7 s (98980ec) to 153.0 s with nothing on that side
+changed: this host drifts by a quarter over tens of minutes.
 
-The previous record (6f944a0, 2026-09-24) gave the same picture: x86 160.1
+Before that, 98980ec (2026-09-25): x86 168.7 s, cards 188.4 s, 32 of 32
+agreeing (mean 0.006), card compute 61.2 and 61.5 s, host rows 98.3 s,
+waiting 44.2 s.
+
+The record before (6f944a0, 2026-09-24) gave the same picture: x86 160.1
 s, cards 192.8 s, 32 of 32 agreeing (mean 0.0075), 6,552 multiplies with
 rows on the cards, 63.2 s of card compute. The re-run is on the backend
 after the review's fixes (a device only when the cards open, the budget
