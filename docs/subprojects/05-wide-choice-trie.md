@@ -2,7 +2,7 @@
 
 `xks subproject run 05`. Record:
 [`results/05-wide-choice-trie.json`](results/05-wide-choice-trie.json) (git
-`6f944a0`, 2026-09-24T15:53:03Z, clean tree, 19 s).
+`4bfa67b`, 2026-09-26T03:46:59Z, clean tree, 19 s).
 
 **Question:** TypeSafe allows 255 options per Choice; one-letter labels stop
 at 26. Past that, labels are three digits read as a trie of forks
@@ -16,10 +16,12 @@ an empty cache.
 
 | | trie of forks | brute force |
 | --- | --- | --- |
-| largest label log-probability difference | 0.023 | |
+| largest label log-probability difference | 0.020 | |
 | argmax | MUL_MAT_ID (gold) | MUL_MAT_ID |
 | tokens evaluated | 358 | 10,380 |
-| time | 0.55 s | 17.9 s |
+| time | 0.80 s | 17.9 s |
 
-Inside the dense subject's floor (0.028): exact to its arithmetic, 29 times
-fewer tokens, 33 times less time.
+Inside the dense subject's floor (0.05, [subproject 02](02-polygraph.md)):
+exact to its arithmetic, 29 times fewer tokens, 22 times less time.
+Re-run on 4bfa67b (2026-09-26 UTC); on 6f944a0 (2026-09-24) the trie took
+0.55 s and differed by 0.023, the same tokens.
