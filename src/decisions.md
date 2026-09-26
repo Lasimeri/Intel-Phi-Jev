@@ -21,7 +21,11 @@ By default the state and each question are kept as marks, not text: an
 FNV-1a 64 hash of their JSON (`fnv64`, the published algorithm, stable
 across runs and builds; the same request marks the same) and the state's
 length. That says "the same state as before" and "a different question"
-without the log holding what callers sent. `--log-text` (or
+without the log holding what callers sent. A mark identifies; it does
+not hide: FNV-1a is not a cryptographic hash and has no salt, so a short
+or guessable state (a shell command, a stock phrase) can be found again
+by hashing guesses. Treat the log as sensitive as the traffic whenever
+the states are. `--log-text` (or
 `XKS_DECISION_LOG_TEXT`) keeps the state and questions as sent instead,
 which makes each line replayable. The answers are always kept: they are
 the decision. A refused request (422, 502) keeps its `message` in place
