@@ -3,10 +3,10 @@
   "name": "bluebird-baseline",
   "what": "BLUEBIRD: stock llama-server (x86, no repack) on the first 10 dev_tasks cases",
   "outcome": "finished",
-  "utc": "2026-09-24T15:38:22Z",
-  "seconds": 201.7,
+  "utc": "2026-09-26T03:30:53Z",
+  "seconds": 168.7,
   "budget_seconds": 600,
-  "git": "6f944a0",
+  "git": "87a89d8",
   "dirty": false,
   "host": "GMNGDSKTP",
   "results": {
@@ -20,8 +20,8 @@
       "ece": 0.15454219389924956,
       "mean_confidence": 0.5018028568621086,
       "coverage_at_5pct_error": 0.7666666666666667,
-      "latency_p50_ms": 3232.0170350000003,
-      "latency_p95_ms": 12202.117301000002,
+      "latency_p50_ms": 2761.61389,
+      "latency_p95_ms": 10153.439849,
       "prompt_tokens_evaluated": 7820,
       "prompt_tokens_cached": 7820,
       "by_kind": {
@@ -32,8 +32,9 @@
       "subject": "bluebird/Qwen3.8-35B-A3B-Q4_K_M",
       "site": "remote",
       "cases": 10,
-      "wall_s": 156.59,
-      "per_case_s": 15.66
+      "wall_s": 154.02,
+      "per_case_s": 15.4,
+      "host_peak_gib": 0.01
     }
   }
 }

@@ -3,10 +3,10 @@
   "name": "polygraph",
   "what": "The fork read three ways (forked, split, control) on the 35B, the copy isolated with one fork, and a dense 0.5B as the noise floor",
   "outcome": "finished",
-  "utc": "2026-09-24T15:41:44Z",
-  "seconds": 116.9,
+  "utc": "2026-09-26T03:33:42Z",
+  "seconds": 114.4,
   "budget_seconds": 600,
-  "git": "6f944a0",
+  "git": "87a89d8",
   "dirty": false,
   "host": "GMNGDSKTP",
   "results": {
@@ -18,23 +18,23 @@
       "recurrent": true,
       "fingerprints": 12,
       "forked_vs_split": {
-        "max": 0.6721942309389277,
-        "mean": 0.2992402670546828
+        "max": 0.7275791099657276,
+        "mean": 0.27858495339025485
       },
       "split_vs_control": {
-        "max": 0.781294473106751,
-        "mean": 0.09891548616769708
+        "max": 0.7026451528784854,
+        "mean": 0.2294269434389428
       },
       "forked_vs_control": {
-        "max": 0.6721942309389277,
-        "mean": 0.2856799368917982
+        "max": 0.9894651524628416,
+        "mean": 0.28135225947877185
       },
       "same_argmax": 12,
       "min_label_mass": 0.9441455901228232,
       "mean_label_mass": 0.9684945363094084,
-      "forked_ms": 20654.316328,
-      "control_ms": 26511.854961000005,
-      "forked_tokens": 1195,
+      "forked_ms": 19976.784218999997,
+      "control_ms": 25898.154796000003,
+      "forked_tokens": 1219,
       "control_tokens": 1705
     },
     "one_fork": {
@@ -46,19 +46,19 @@
         "mean": 0.0
       },
       "split_vs_control": {
-        "max": 0.033830074046626635,
-        "mean": 0.011276691348875543
+        "max": 0.7026451528784854,
+        "mean": 0.29995467598079745
       },
       "forked_vs_control": {
-        "max": 0.033830074046626635,
-        "mean": 0.011276691348875543
+        "max": 0.7026451528784854,
+        "mean": 0.29995467598079745
       },
       "same_argmax": 3,
       "min_label_mass": 0.9600770857954194,
       "mean_label_mass": 0.9749870873243752,
-      "forked_ms": 5232.934276,
-      "control_ms": 6365.933574000001,
-      "forked_tokens": 299,
+      "forked_ms": 5904.620946,
+      "control_ms": 7527.130671999999,
+      "forked_tokens": 305,
       "control_tokens": 427
     },
     "dense_small": {
@@ -66,23 +66,23 @@
       "recurrent": false,
       "fingerprints": 18,
       "forked_vs_split": {
-        "max": 0.008832346309677774,
-        "mean": 0.0034130422318434167
+        "max": 0.015735071520790456,
+        "mean": 0.003743608402001818
       },
       "split_vs_control": {
-        "max": 0.02836350017166467,
-        "mean": 0.007493037622528694
+        "max": 0.04945813399976018,
+        "mean": 0.010788280668128931
       },
       "forked_vs_control": {
-        "max": 0.02836271641067256,
-        "mean": 0.008268018452395035
+        "max": 0.04947590931330481,
+        "mean": 0.01070275987106031
       },
       "same_argmax": 18,
       "min_label_mass": 0.8846507506372487,
       "mean_label_mass": 0.9570643775988774,
-      "forked_ms": 2213.200371,
-      "control_ms": 3825.878075,
-      "forked_tokens": 1802,
+      "forked_ms": 2355.555725,
+      "control_ms": 3551.9548690000006,
+      "forked_tokens": 1838,
       "control_tokens": 2550
     }
   }

@@ -25,7 +25,8 @@ Read `CONTRIBUTING.md` first; it is the authority. The non-obvious rules:
   checks there. A plain `xks query` goes to a running server.
 - Measure through `xks subproject run NN` (600 s budget each); records in
   docs/subprojects/results/. The 35B's label log-probabilities move up to
-  0.8 with how a prompt is cut into decodes: compare against that floor.
+  0.99 with how a prompt is cut into decodes (subproject 02): compare
+  against that floor.
 - Test data is real text or obviously artificial, never invented people,
   companies or tickets. `make check` before committing, push after.
 - Traps: perl substitutions with `{}` or `|` delimiters over Rust code break

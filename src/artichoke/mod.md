@@ -92,8 +92,9 @@ none with it set.
   same decodes), forked against split is 0.0 on every fingerprint of the
   hybrid 35B-A3B (subproject 02).
 - Cutting a prompt into two decodes moves the 35B's label log-probabilities
-  by up to 0.8 (mean 0.3); a dense 0.5B moves 0.045. That is the subject's
-  sensitivity to batch composition, not the engine.
+  by up to 0.99 (mean 0.3); a dense 0.5B moves 0.05 (subproject 02 on
+  87a89d8; 0.8 and 0.045 before the session ended at the state). That
+  is the subject's sensitivity to batch composition, not the engine.
 - The trie against a brute-force control on 30 options: 0.032 max
   difference, same argmax, 0.54 s against 17.4 s (subproject 05).
 

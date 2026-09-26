@@ -177,8 +177,9 @@ git revision, time and configuration, read in
   with flash attention off, whose fault has a candidate fix on the
   sibling's side not yet re-run
   ([subproject 06](docs/subprojects/06-avx512-parity.md)).
-- The 35B's readings move by up to 0.8 in label log-probability with how
-  the prompt is cut into decodes (a dense 0.5B moves 0.045): a noise floor
+- The 35B's readings move by up to 0.99 in label log-probability with how
+  the prompt is cut into decodes (a dense 0.5B moves 0.05; subproject 02,
+  2026-09-26 UTC), every answer the same: a noise floor
   on how finely its probabilities can be read.
 
 ## The hosted Jev
