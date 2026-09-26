@@ -3,38 +3,38 @@
   "name": "wide-choice-trie",
   "what": "A 30-option Choice (multi-token labels) read as a trie of forks against brute force",
   "outcome": "finished",
-  "utc": "2026-09-26T03:46:59Z",
-  "seconds": 19.4,
+  "utc": "2026-09-26T15:37:53Z",
+  "seconds": 67.4,
   "budget_seconds": 600,
-  "git": "4bfa67b",
+  "git": "9ce2915",
   "dirty": false,
   "host": "GMNGDSKTP",
   "results": {
-    "subject": "/home/lasimeri/models/tiny/qwen2.5-0.5b-instruct-fp16.gguf",
+    "subject": "/home/lasimeri/models/Qwen3.8-2B-Distill/Qwen3.8-2B-Q8_0.gguf",
     "site": "x86",
     "polygraph": {
-      "subject": "artichoke/qwen2.5-0.5b-instruct-fp16",
-      "recurrent": false,
+      "subject": "artichoke/Qwen3.8-2B-Q8_0",
+      "recurrent": true,
       "fingerprints": 1,
       "forked_vs_split": {
-        "max": 0.019760168701605352,
-        "mean": 0.019760168701605352
+        "max": 0.07680609835887253,
+        "mean": 0.07680609835887253
       },
       "split_vs_control": {
         "max": 0.0,
         "mean": 0.0
       },
       "forked_vs_control": {
-        "max": 0.019760168701605352,
-        "mean": 0.019760168701605352
+        "max": 0.07680609835887253,
+        "mean": 0.07680609835887253
       },
       "same_argmax": 1,
-      "min_label_mass": 0.7534704524080441,
-      "mean_label_mass": 0.7534704524080441,
-      "forked_ms": 803.0031349999999,
-      "control_ms": 17853.951545,
-      "forked_tokens": 358,
-      "control_tokens": 10380
+      "min_label_mass": 0.4052403454514019,
+      "mean_label_mass": 0.4052403454514019,
+      "forked_ms": 2219.570147,
+      "control_ms": 64241.2904,
+      "forked_tokens": 356,
+      "control_tokens": 10320
     }
   }
 }

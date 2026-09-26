@@ -1,17 +1,17 @@
 {
   "subproject": "02",
   "name": "polygraph",
-  "what": "The fork read three ways (forked, split, control) on the 35B, the copy isolated with one fork, and a dense 0.5B as the noise floor",
+  "what": "The fork read three ways (forked, split, control) on the 35B, the copy isolated with one fork, and the small subject as a second floor",
   "outcome": "finished",
-  "utc": "2026-09-26T03:33:42Z",
-  "seconds": 114.4,
+  "utc": "2026-09-26T15:39:00Z",
+  "seconds": 177.5,
   "budget_seconds": 600,
-  "git": "87a89d8",
+  "git": "9ce2915",
   "dirty": false,
   "host": "GMNGDSKTP",
   "results": {
     "subject": "/home/lasimeri/models/Qwen3.8-35B-A3B/Qwen3.8-35B-A3B-Q4_K_M.gguf",
-    "small": "/home/lasimeri/models/tiny/qwen2.5-0.5b-instruct-fp16.gguf",
+    "small": "/home/lasimeri/models/Qwen3.8-2B-Distill/Qwen3.8-2B-Q8_0.gguf",
     "site": "x86",
     "batched_forks": {
       "subject": "artichoke/Qwen3.8-35B-A3B-Q4_K_M",
@@ -32,8 +32,8 @@
       "same_argmax": 12,
       "min_label_mass": 0.9441455901228232,
       "mean_label_mass": 0.9684945363094084,
-      "forked_ms": 19976.784218999997,
-      "control_ms": 25898.154796000003,
+      "forked_ms": 29406.917050999997,
+      "control_ms": 32029.899380000003,
       "forked_tokens": 1219,
       "control_tokens": 1705
     },
@@ -56,34 +56,34 @@
       "same_argmax": 3,
       "min_label_mass": 0.9600770857954194,
       "mean_label_mass": 0.9749870873243752,
-      "forked_ms": 5904.620946,
-      "control_ms": 7527.130671999999,
+      "forked_ms": 5480.991064000001,
+      "control_ms": 6333.708215,
       "forked_tokens": 305,
       "control_tokens": 427
     },
     "dense_small": {
-      "subject": "artichoke/qwen2.5-0.5b-instruct-fp16",
-      "recurrent": false,
+      "subject": "artichoke/Qwen3.8-2B-Q8_0",
+      "recurrent": true,
       "fingerprints": 18,
       "forked_vs_split": {
-        "max": 0.015735071520790456,
-        "mean": 0.003743608402001818
+        "max": 0.1419544363313996,
+        "mean": 0.048809158989638765
       },
       "split_vs_control": {
-        "max": 0.04945813399976018,
-        "mean": 0.010788280668128931
+        "max": 0.121992996505778,
+        "mean": 0.04288211960463764
       },
       "forked_vs_control": {
-        "max": 0.04947590931330481,
-        "mean": 0.01070275987106031
+        "max": 0.2132106995602676,
+        "mean": 0.05659492820927486
       },
       "same_argmax": 18,
-      "min_label_mass": 0.8846507506372487,
-      "mean_label_mass": 0.9570643775988774,
-      "forked_ms": 2355.555725,
-      "control_ms": 3551.9548690000006,
-      "forked_tokens": 1838,
-      "control_tokens": 2550
+      "min_label_mass": 0.9826167783038224,
+      "mean_label_mass": 0.9930357483552684,
+      "forked_ms": 10179.958368,
+      "control_ms": 14787.370668999998,
+      "forked_tokens": 1832,
+      "control_tokens": 2568
     }
   }
 }
