@@ -3,12 +3,13 @@
 
 .DEFAULT_GOAL := help
 XKS := target/release/xks
+PREFIX ?= $(HOME)/.local
 LLAMA_CPP_DIR ?= $(HOME)/llama.cpp
 export LLAMA_CPP_DIR
 AVX512_LLAMA := $(LLAMA_CPP_DIR)/build-avx512/bin
 AVX512_ENV := LLAMA_BUILD_DIR=$(AVX512_LLAMA) CARGO_TARGET_DIR=target/avx512
 
-.PHONY: help build build-x86 build-avx512 serve stop query jev jev-eval subprojects subproject test fmt clippy docs-check check clean
+.PHONY: help build build-x86 build-avx512 install uninstall doctor serve stop query jev jev-eval subprojects subproject test fmt clippy docs-check check clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-14s %s\n", $$1, $$2}'
@@ -21,6 +22,17 @@ build-x86: ## xks against llama.cpp's x86-64 build (build-native)
 build-avx512: ## xks against llama.cpp's AVX-512 build, for the avx512 site (skipped when that build is absent)
 	@if [ -d "$(AVX512_LLAMA)" ]; then $(AVX512_ENV) cargo build --release; \
 	else echo "build-avx512: skipped, no $(AVX512_LLAMA) (llama.cpp built with GGML_AVX512=ON; only the avx512 site needs it)"; fi
+
+install: build-x86 ## Link xks into $(PREFIX)/bin (a link, so every rebuild is what runs; never over a file)
+	@mkdir -p "$(PREFIX)/bin"
+	@if [ -e "$(PREFIX)/bin/xks" ] && [ ! -L "$(PREFIX)/bin/xks" ]; then echo "$(PREFIX)/bin/xks is a file, not a link: left alone"; exit 1; fi
+	@ln -sfn "$(CURDIR)/$(XKS)" "$(PREFIX)/bin/xks" && echo "$(PREFIX)/bin/xks -> $(CURDIR)/$(XKS)"
+
+uninstall: ## Remove that link (only a link, never a file)
+	@if [ -L "$(PREFIX)/bin/xks" ]; then rm "$(PREFIX)/bin/xks" && echo "removed $(PREFIX)/bin/xks"; else echo "no link at $(PREFIX)/bin/xks"; fi
+
+doctor: build-x86 ## What is missing for xks to answer, and the fix for each (FIX=1 builds and links what it can)
+	$(XKS) doctor --prefix "$(PREFIX)" $(if $(FIX),--fix)
 
 serve: build-x86 ## Start the server in the background (site and subject from xks.conf)
 	$(XKS) serve --detach

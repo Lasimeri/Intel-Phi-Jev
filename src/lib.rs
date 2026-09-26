@@ -19,6 +19,8 @@ pub mod artichoke;
 pub mod backend;
 pub mod config;
 pub mod corroborate;
+#[cfg(feature = "artichoke")]
+pub mod doctor;
 pub mod eval;
 pub mod judge;
 pub mod ledger;

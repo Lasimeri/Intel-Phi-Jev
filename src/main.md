@@ -154,3 +154,12 @@ load; why and what it measured are in
 [`artichoke/mod.md`](artichoke/mod.md), "Pages read in as used". The
 standard library's own calls (its signal stacks) pass through it too,
 unchanged.
+
+## `doctor`
+
+`xks doctor [--fix] [--prefix P]` is handled first thing in `run()`,
+before the template, layout and conditioning are parsed, so a bad value in
+a config file is one of its findings rather than the error that stops it.
+It prints the report ([`doctor.md`](doctor.md)) and exits 0 when a
+question can be answered, 1 when not. `--prefix` takes `~/` for the home
+directory (default `~/.local`).

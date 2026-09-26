@@ -193,6 +193,20 @@ enum Cmd {
     /// Stop the card workers and release their huge pages.
     #[cfg(feature = "artichoke")]
     Release,
+    /// What this machine has of what xks needs (the llama.cpp build, the
+    /// subject, Intel-Phi-AVX512 and its payload, the cards, a server),
+    /// and the fix for what is missing. Starts nothing. Exit 0 when a
+    /// question can be answered, 1 when not.
+    #[cfg(feature = "artichoke")]
+    Doctor {
+        /// Do the fixes that are a build or a link: the payload built,
+        /// xks linked into PREFIX/bin. Never a card, a download or sudo.
+        #[arg(long)]
+        fix: bool,
+        /// Where --fix links xks (PREFIX/bin/xks).
+        #[arg(long, default_value = "~/.local")]
+        prefix: String,
+    },
     /// ARTICHOKE only: read every fingerprint of every case three ways
     /// (forked, split, control) and compare the readings.
     #[cfg(feature = "artichoke")]
@@ -605,6 +619,21 @@ fn read_rows(path: &PathBuf) -> Result<Vec<eval::Row>, String> {
 fn run() -> Result<(), String> {
     let matches = Cli::command().get_matches();
     let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
+    // Before anything is parsed from the configuration: a bad value there
+    // is one of the doctor's findings, not an error that stops it.
+    #[cfg(feature = "artichoke")]
+    if let Cmd::Doctor { fix, prefix } = &cli.cmd {
+        let prefix = match prefix.strip_prefix("~/") {
+            Some(rest) => Path::new(&std::env::var("HOME").unwrap_or_default()).join(rest),
+            None => PathBuf::from(prefix),
+        };
+        let repo = xks::config::repo_root()
+            .map_or_else(|| "(not in a checkout)".into(), |p| p.display().to_string());
+        println!("xks doctor: Intel Phi Jev at {repo}");
+        let report = xks::doctor::run(*fix, &prefix);
+        print!("{}", report.text());
+        std::process::exit(if report.ready() { 0 } else { 1 });
+    }
     let template: Template = cli.template.parse()?;
     let layout: Layout = cli.layout.parse()?;
     let conditioning: Calibration = match &cli.conditioning {
@@ -904,6 +933,9 @@ fn run() -> Result<(), String> {
         Cmd::Release => Ok(()),
         #[cfg(feature = "artichoke")]
         Cmd::Polygraph { .. } => Ok(()),
+        // Handled first thing in run().
+        #[cfg(feature = "artichoke")]
+        Cmd::Doctor { .. } => Ok(()),
     }
 }
 

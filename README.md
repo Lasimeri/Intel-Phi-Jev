@@ -18,7 +18,13 @@ readings after the fact instead.
 
 ## One command each
 
+The whole family is set up from Mechanical Jev, the asking side: `make
+setup` there builds and links both commands and checks this repository
+and the cards through `xks doctor`. Here alone:
+
 ```sh
+make install        # build, then link xks into ~/.local/bin (PREFIX=...; never over a file)
+xks doctor          # what is missing for xks to answer, and the fix for each (--fix: build, link)
 make build          # xks against llama.cpp's x86-64 build, and its AVX-512 build when present
 make serve          # background server, subject and site from xks.conf (shows its progress)
 make query          # examples/query.json, answered by that server
@@ -87,6 +93,7 @@ since a waiting worker spins.
 | `xks ledger LOG` | what the payload's verbose log says each card computed |
 | `xks subproject list / run NN / run all` | the experiments |
 | `xks release` | stop the card workers, free their huge pages (refused while a process holds the cards) |
+| `xks doctor [--fix]` | what this machine has of what xks needs and the fix for what is missing; exit 0 ready, 1 not ([`src/doctor.md`](src/doctor.md)) |
 
 ## Naming
 
