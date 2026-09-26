@@ -131,6 +131,8 @@ wins over both.
 | `XKS_PERMUTATIONS` | `--permutations` | 1 (`xks.conf` sets 3) |
 | `XKS_BIND` | `serve --bind`; where `query` looks for a server | `127.0.0.1:8090` |
 | `XKS_API_KEYS` | `serve --api-keys` | none |
+| `XKS_DECISION_LOG` | `serve --decision-log` | none: no log ([`decisions.md`](decisions.md)) |
+| `XKS_DECISION_LOG_TEXT` | `serve --log-text` | off: marks, not text |
 | `XKS_KILL_DATE` | `serve --kill-date` | 0 (never); `xks.conf` sets 1800 (30 min without a question) |
 
 Read directly, not through a flag: `XKS_CONFIG` ([`config.md`](config.md)),

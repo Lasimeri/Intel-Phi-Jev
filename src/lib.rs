@@ -19,6 +19,7 @@ pub mod artichoke;
 pub mod backend;
 pub mod config;
 pub mod corroborate;
+pub mod decisions;
 #[cfg(feature = "artichoke")]
 pub mod doctor;
 pub mod eval;

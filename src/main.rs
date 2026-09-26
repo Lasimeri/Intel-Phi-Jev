@@ -114,6 +114,14 @@ enum Cmd {
         /// $XDG_RUNTIME_DIR/xks, returns once the server answers /health.
         #[arg(long)]
         detach: bool,
+        /// Record every question set and its answers here, one JSON line
+        /// each (src/decisions.md): by default a hash of the state and of
+        /// each question, not their text.
+        #[arg(long, env = "XKS_DECISION_LOG")]
+        decision_log: Option<PathBuf>,
+        /// Keep the state and questions as sent in the decision log.
+        #[arg(long, env = "XKS_DECISION_LOG_TEXT")]
+        log_text: bool,
     },
     /// One query. Reads a JSON request from --file or stdin, or builds one
     /// from --state and --noul/--choice/--score flags. With a server
@@ -771,6 +779,15 @@ fn run() -> Result<(), String> {
     if let Cmd::Serve { bind, .. } = &cli.cmd {
         free_to_bind(bind)?;
     }
+    // Opened now, so a path that cannot be written is said before the load.
+    let decision_log = match &cli.cmd {
+        Cmd::Serve {
+            decision_log: Some(p),
+            log_text,
+            ..
+        } => Some(xks::decisions::Log::open(p, *log_text)?),
+        _ => None,
+    };
     #[cfg(feature = "artichoke")]
     if let Cmd::Polygraph { rows, limit, .. } = &cli.cmd {
         let (engine, _) = artichoke(&cli)?;
@@ -843,7 +860,7 @@ fn run() -> Result<(), String> {
             bind,
             api_keys,
             kill_date,
-            detach: _,
+            ..
         } => {
             let api_keys = api_keys
                 .split(',')
@@ -863,6 +880,7 @@ fn run() -> Result<(), String> {
                     kill_date: (kill_date > 0).then(|| Duration::from_secs(kill_date)),
                     site: site_name.into(),
                     cards: site_cards,
+                    decision_log,
                 },
             )?;
             // Only the kill date ends `serve` without an error.

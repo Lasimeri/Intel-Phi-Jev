@@ -26,6 +26,9 @@ pub struct ServerConfig {
     pub site: String,
     /// The cards the subject uses, for `/health`.
     pub cards: Vec<u32>,
+    /// Where each question set and its answers are recorded, if anywhere
+    /// ([`crate::decisions`]).
+    pub decision_log: Option<crate::decisions::Log>,
 }
 
 /// What a request asks for, from its method and path alone.
@@ -70,6 +73,7 @@ pub fn serve<S: Scorer + 'static>(judge: Judge<S>, cfg: ServerConfig) -> Result<
         cards: cfg.cards.clone(),
         kill_date: cfg.kill_date,
         last: Mutex::new(Instant::now()),
+        log: cfg.decision_log,
     });
     let busy = Arc::new(AtomicUsize::new(0));
     eprintln!(
@@ -126,6 +130,8 @@ struct About {
     /// question counts: a monitor polling `/health` (Mechanical Jev's TUI
     /// does, every 5 s) must not keep alive a server nobody is asking.
     last: Mutex<Instant>,
+    /// The decision log, when the server keeps one.
+    log: Option<crate::decisions::Log>,
 }
 
 /// A duration as a person reads it: whole minutes when it is some, else
@@ -204,14 +210,27 @@ fn handle<S: Scorer>(
                         json!({"message": "empty body: POST a JSON request, {\"state\": ..., \"questions\": {...}}"}),
                     )
                 } else {
-                    match serde_json::from_str::<Request>(&body) {
+                    let t0 = Instant::now();
+                    // As JSON first (a syntax error keeps its line and
+                    // column), then as a request; the log keeps the JSON.
+                    let parsed: Result<Value, String> =
+                        serde_json::from_str(&body).map_err(|e| e.to_string());
+                    let asked = parsed.clone().and_then(|v| {
+                        serde_json::from_value::<Request>(v).map_err(|e| e.to_string())
+                    });
+                    let out = match asked {
                         Err(e) => (422, json!({"message": format!("invalid request: {e}")})),
                         Ok(r) => match judge.evaluate(&r) {
                             Ok(ev) => (200, serde_json::to_value(ev).unwrap()),
                             Err(BackendError::Rejected(m)) => (422, json!({"message": m})),
                             Err(e) => (502, json!({"message": e.to_string()})),
                         },
+                    };
+                    if let Some(log) = &about.log {
+                        let ms = t0.elapsed().as_secs_f64() * 1e3;
+                        log.record(parsed.as_ref().ok(), out.0, &out.1, ms);
                     }
+                    out
                 }
             }
         }

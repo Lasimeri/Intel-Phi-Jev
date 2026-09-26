@@ -48,3 +48,8 @@ one question, then `/health` polled every 2 s: the server exited 44 s
 after the question, both cards with no worker and 0 huge pages, the pid
 file gone. And from Mechanical Jev's TUI with `XKS_KILL_DATE=120`: the
 server it started stopped itself after 2 min and released both cards.
+
+With `--decision-log`, each question set is recorded after it is answered
+or refused, with its time ([`decisions.md`](decisions.md)); the request
+is parsed as JSON first, so the log keeps it (as marks or text) even when
+it is not a valid request, and a syntax error keeps its line and column.

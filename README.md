@@ -82,7 +82,7 @@ since a waiting worker spins.
 
 | command | does |
 | --- | --- |
-| `xks serve [--detach] [--kill-date S]` | the Jev endpoint; it stops itself after 30 min without a question (`XKS_KILL_DATE`), giving the cards back, and `xks stop` ends a detached one at once |
+| `xks serve [--detach] [--kill-date S] [--decision-log F]` | the Jev endpoint; it stops itself after 30 min without a question (`XKS_KILL_DATE`), giving the cards back, and `xks stop` ends a detached one at once |
 | `xks query --file req.json` | one request (a running server answers it; `--local` loads the subject here); `--compare` also asks the hosted Jev (needs `TYPESAFE_API_KEY`) |
 | `xks mcp` | an MCP server over stdio, one tool, `judge` |
 | `xks eval cases.jsonl [--rows R]` | accuracy, Brier, ECE, coverage, latency on labelled cases |
