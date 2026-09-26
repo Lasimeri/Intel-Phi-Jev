@@ -863,6 +863,12 @@ fn run() -> Result<(), String> {
             v["cases"] = json!(cases.len());
             v["wall_s"] = json!((wall * 100.0).round() / 100.0);
             v["per_case_s"] = json!((wall / cases.len().max(1) as f64 * 100.0).round() / 100.0);
+            if let Some(g) = std::fs::read_to_string("/proc/self/status")
+                .ok()
+                .and_then(|s| peak_gib(&s))
+            {
+                v["host_peak_gib"] = json!((g * 100.0).round() / 100.0);
+            }
             println!("{}", serde_json::to_string_pretty(&v).unwrap());
             if let Some(p) = rows {
                 let text: String = r
@@ -899,6 +905,20 @@ fn run() -> Result<(), String> {
         #[cfg(feature = "artichoke")]
         Cmd::Polygraph { .. } => Ok(()),
     }
+}
+
+/// The peak resident memory in a `/proc/PID/status` text (`VmHWM`, the
+/// kernel's high-water mark: the subject's mapped file pages count), GiB.
+fn peak_gib(status: &str) -> Option<f64> {
+    let kb: f64 = status
+        .lines()
+        .find_map(|l| l.strip_prefix("VmHWM:"))?
+        .trim()
+        .trim_end_matches("kB")
+        .trim()
+        .parse()
+        .ok()?;
+    Some(kb / 1048576.0)
 }
 
 /// Whether this process is the avx512 site's outer one, which `prepare`
@@ -1366,5 +1386,12 @@ mod tests {
         assert_eq!(map(false), 4096);
         assert_eq!(map(true), 0);
         std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn the_peak_is_read_from_vmhwm() {
+        let status = "Name:\txks\nVmPeak:\t 9999999 kB\nVmHWM:\t 2097152 kB\nVmRSS:\t 1048576 kB\n";
+        assert_eq!(super::peak_gib(status), Some(2.0));
+        assert_eq!(super::peak_gib("Name:\txks\n"), None);
     }
 }

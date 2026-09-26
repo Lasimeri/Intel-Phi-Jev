@@ -23,7 +23,10 @@ worker while another process holds the cards lock ([`site.md`](site.md)):
 `stop` leaves them running and says who is using them, `release` refuses.
 
 `eval` adds `subject`, `site`, `cases`, `wall_s` and `per_case_s` to the
-metrics, so every record says what produced it.
+metrics, so every record says what produced it, and (from 2026-09-25)
+`host_peak_gib`: the eval process's peak resident memory (`VmHWM` in
+`/proc/self/status`, the subject's mapped pages included), what the run
+cost this host in memory at its worst.
 
 The global flags are documented in `xks --help`; every one has an `XKS_*`
 environment variable, which is how `xks.conf` sets them.
